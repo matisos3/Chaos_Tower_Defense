@@ -756,6 +756,9 @@ public class SkillSelectionManager : MonoBehaviour
             case "Czas zamrożenia":
                 return "freeze_duration";
 
+            case "NovaCooldown":
+                return "cooldown";
+
             case "Promień Blizzard":
                 return "blizzard_radius";
 
@@ -864,6 +867,15 @@ public class SkillSelectionManager : MonoBehaviour
             ref order
         );
 
+AddInitialStat(
+    lines,
+    skill,
+    "range",
+    "Zasięg",
+    "float",
+    ref order
+);
+
 
         // =====================================================
         // THORNS - REDUKCJA OBRAŻEŃ
@@ -880,6 +892,9 @@ public class SkillSelectionManager : MonoBehaviour
                 ref order
             );
         }
+
+if (skill.skillID != "Thorns")
+{
 
 
         bool isProjectile =
@@ -904,22 +919,31 @@ public class SkillSelectionManager : MonoBehaviour
             fireRateFormat,
             ref order
         );
+}
 
+if (
+    (skill.categories &
+    SkillCategory.Piercing) != 0
+)
+{
+    int displayedPiercingCount =
+        Mathf.Max(0, skill.piercingCount - 1);
 
-        if (
-            (skill.categories &
-            SkillCategory.Piercing) != 0
+    string label =
+        LocalizeStatLabel("Liczba przebić");
+
+    lines.Add(
+        new StatisticEntry(
+            label +
+            ": " +
+            Value(
+                displayedPiercingCount.ToString()
+            ),
+            1,
+            order++
         )
-        {
-            AddInitialStat(
-                lines,
-                skill,
-                "piercingCount",
-                "Liczba przebić",
-                "integer",
-                ref order
-            );
-        }
+    );
+}
 
 
         AddInitialStat(
@@ -1007,7 +1031,8 @@ public class SkillSelectionManager : MonoBehaviour
             );
         }
 
-
+if (skill.skillID == "Shotgun")
+{
         AddInitialStat(
             lines,
             skill,
@@ -1016,6 +1041,7 @@ public class SkillSelectionManager : MonoBehaviour
             "integer",
             ref order
         );
+}
 
         AddInitialStat(
             lines,
@@ -1227,15 +1253,6 @@ public class SkillSelectionManager : MonoBehaviour
         AddInitialStat(
             lines,
             skill,
-            "frostNovaCooldown",
-            "Cooldown",
-            "seconds",
-            ref order
-        );
-
-        AddInitialStat(
-            lines,
-            skill,
             "iceShotDamage",
             "Obrażenia",
             "damage",
@@ -1422,23 +1439,33 @@ public class SkillSelectionManager : MonoBehaviour
             ref order
         );
 
-        AddInitialStat(
-            lines,
-            skill,
-            "spinningLaserCount",
-            "Liczba ramion",
-            "integer",
-            ref order
-        );
+// =====================================================
+// SPINNING LASER
+// =====================================================
 
-        AddInitialStat(
-            lines,
-            skill,
-            "spinningLaserDamage",
-            "Obrażenia",
-            "damage",
-            ref order
-        );
+if (
+    skill != null &&
+    skill.skillID == "SpinningLaser"
+)
+{
+    AddInitialStat(
+        lines,
+        skill,
+        "spinningLaserCount",
+        "Liczba ramion",
+        "integer",
+        ref order
+    );
+
+    AddInitialStat(
+        lines,
+        skill,
+        "spinningLaserDamage",
+        "Obrażenia",
+        "damage",
+        ref order
+    );
+}
 
         AddInitialStat(
             lines,
@@ -1870,60 +1897,63 @@ public class SkillSelectionManager : MonoBehaviour
         // WHIRL
         // =====================================================
 
-        AddUpgradeStat(
-            lines,
-            skill,
-            data,
-            "whirlRadius",
-            "whirlRadiusUpgrade",
-            "Promień wiru",
-            "number",
-            ref order
-        );
+if (data.skillID == "WhirlOfChaos")
+{
+    AddUpgradeStat(
+        lines,
+        skill,
+        data,
+        "whirlRadius",
+        "whirlRadiusUpgrade",
+        "Promień wiru",
+        "number",
+        ref order
+    );
 
-        AddUpgradeStat(
-            lines,
-            skill,
-            data,
-            "whirlDuration",
-            "whirlDurationUpgrade",
-            "Czas działania",
-            "seconds",
-            ref order
-        );
+    AddUpgradeStat(
+        lines,
+        skill,
+        data,
+        "whirlDuration",
+        "whirlDurationUpgrade",
+        "Czas działania",
+        "seconds",
+        ref order
+    );
 
-        AddUpgradeStat(
-            lines,
-            skill,
-            data,
-            "whirlTickInterval",
-            "whirlTickIntervalUpgrade",
-            "Interwał obrażeń",
-            "seconds",
-            ref order
-        );
+    AddUpgradeStat(
+        lines,
+        skill,
+        data,
+        "whirlTickInterval",
+        "whirlTickIntervalUpgrade",
+        "Interwał obrażeń",
+        "seconds",
+        ref order
+    );
 
-        AddUpgradeStat(
-            lines,
-            skill,
-            data,
-            "whirlPullSpeed",
-            "whirlPullSpeedUpgrade",
-            "Siła przyciągania",
-            "number",
-            ref order
-        );
+    AddUpgradeStat(
+        lines,
+        skill,
+        data,
+        "whirlPullSpeed",
+        "whirlPullSpeedUpgrade",
+        "Siła przyciągania",
+        "number",
+        ref order
+    );
 
-        AddUpgradeStat(
-            lines,
-            skill,
-            data,
-            "whirlDamage",
-            "whirlDamageUpgrade",
-            "Obrażenia",
-            "damage",
-            ref order
-        );
+    AddUpgradeStat(
+        lines,
+        skill,
+        data,
+        "whirlDamage",
+        "whirlDamageUpgrade",
+        "Obrażenia",
+        "damage",
+        ref order
+    );
+}
 
 
         // =====================================================
@@ -2158,7 +2188,8 @@ public class SkillSelectionManager : MonoBehaviour
         // =====================================================
         // FROST NOVA
         // =====================================================
-
+if (data.skillID == "FrostNova")
+{
         AddUpgradeStat(
             lines,
             skill,
@@ -2191,17 +2222,7 @@ public class SkillSelectionManager : MonoBehaviour
             "seconds",
             ref order
         );
-
-        AddCooldownUpgradeStat(
-            lines,
-            skill,
-            data,
-            "frostNovaCooldown",
-            "frostNovaCooldownUpgrade",
-            "Cooldown",
-            ref order
-        );
-
+}
 
         // =====================================================
         // ICE SHOT
@@ -2584,64 +2605,58 @@ public class SkillSelectionManager : MonoBehaviour
         );
 
 
-        // =====================================================
-        // SPINNING LASER
-        // =====================================================
+// =====================================================
+// SPINNING LASER
+// =====================================================
 
-        AddUpgradeStat(
-            lines,
-            skill,
-            data,
-            "spinningLaserCount",
-            "spinningLaserCountUpgrade",
-            "Liczba ramion",
-            "integer",
-            ref order
-        );
+if (
+    data.skillID == "SpinningLaser"
+)
+{
+    AddUpgradeStat(
+        lines,
+        skill,
+        data,
+        "spinningLaserCount",
+        "spinningLaserCountUpgrade",
+        "Liczba ramion",
+        "integer",
+        ref order
+    );
 
-        AddUpgradeStat(
-            lines,
-            skill,
-            data,
-            "spinningLaserRadius",
-            "spinningLaserRadiusUpgrade",
-            "Promień",
-            "number",
-            ref order
-        );
+    AddUpgradeStat(
+        lines,
+        skill,
+        data,
+        "spinningLaserRadius",
+        "spinningLaserRadiusUpgrade",
+        "Promień",
+        "number",
+        ref order
+    );
 
-        AddUpgradeStat(
-            lines,
-            skill,
-            data,
-            "spinningLaserRotationSpeed",
-            "spinningLaserRotationSpeedUpgrade",
-            "Prędkość obrotu",
-            "number",
-            ref order
-        );
+    AddUpgradeStat(
+        lines,
+        skill,
+        data,
+        "spinningLaserRotationSpeed",
+        "spinningLaserRotationSpeedUpgrade",
+        "Prędkość obrotu",
+        "number",
+        ref order
+    );
 
-        AddUpgradeStat(
-            lines,
-            skill,
-            data,
-            "spinningLaserDamage",
-            "spinningLaserDamageUpgrade",
-            "Obrażenia",
-            "damage",
-            ref order
-        );
-
-        AddUpgradeStat(
-            lines,
-            skill,
-            data,
-            "spinningLaserDamageInterval",
-            "spinningLaserDamageIntervalUpgrade",
-            "Interwał obrażeń",
-            "seconds",
-            ref order
-        );
+    AddUpgradeStat(
+        lines,
+        skill,
+        data,
+        "spinningLaserDamage",
+        "spinningLaserDamageUpgrade",
+        "Obrażenia",
+        "damage",
+        ref order
+    );
+}
 
 
         // =====================================================
@@ -2753,51 +2768,51 @@ public class SkillSelectionManager : MonoBehaviour
     // CURRENT PIERCING
     // =========================================================
 
-    private void AddCurrentPiercingStat(
-        List<StatisticEntry> lines,
-        SkillInstance skill,
-        ref int order)
+private void AddCurrentPiercingStat(
+    List<StatisticEntry> lines,
+    SkillInstance skill,
+    ref int order)
+{
+    if (
+        lines == null ||
+        skill == null ||
+        skill.data == null
+    )
     {
-        if (
-            lines == null ||
-            skill == null ||
-            skill.data == null
-        )
-        {
-            return;
-        }
-
-        if (
-            (skill.data.categories &
-            SkillCategory.Piercing) == 0
-        )
-        {
-            return;
-        }
-
-        int piercing =
-            Mathf.Max(
-                1,
-                skill.piercingCount
-            );
-
-        string label =
-            LocalizeStatLabel(
-                "Liczba przebić"
-            );
-
-        lines.Add(
-            new StatisticEntry(
-                label +
-                ": " +
-                Value(
-                    piercing.ToString()
-                ),
-                1,
-                order++
-            )
-        );
+        return;
     }
+
+    if (
+        (skill.data.categories &
+        SkillCategory.Piercing) == 0
+    )
+    {
+        return;
+    }
+
+    int piercing =
+        Mathf.Max(
+            0,
+            skill.piercingCount - 1
+        );
+
+    string label =
+        LocalizeStatLabel(
+            "Liczba przebić"
+        );
+
+    lines.Add(
+        new StatisticEntry(
+            label +
+            ": " +
+            Value(
+                piercing.ToString()
+            ),
+            1,
+            order++
+        )
+    );
+}
 
 
     // =========================================================
@@ -2925,12 +2940,18 @@ public class SkillSelectionManager : MonoBehaviour
         ref int order)
     {
         if (
+            lines == null ||
             skill == null ||
             data == null
         )
         {
             return;
         }
+
+    if (currentFieldName == "spinningLaserDamageInterval")
+    {
+        return;
+    }
 
         float currentValue;
 
@@ -3091,6 +3112,7 @@ public class SkillSelectionManager : MonoBehaviour
         string label,
         ref int order)
     {
+    Debug.Log("WTF");
         if (
             skill == null ||
             data == null
