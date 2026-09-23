@@ -1217,14 +1217,6 @@ public class PlayFabManager : MonoBehaviour
     // TALENT PROGRESS - PUBLIC STATUS
     // =========================================================
 
-    public bool IsTalentProgressLoaded
-    {
-        get
-        {
-            return IsTalentProgressLoadedInternal;
-        }
-    }
-
     private bool IsTalentProgressLoadedInternal = false;
 
 
@@ -1259,6 +1251,28 @@ public class PlayFabManager : MonoBehaviour
         );
     }
 
+private void OnTalentProgressDataFailed(PlayFabError error)
+{
+    Debug.LogWarning(
+        "[PlayFabManager] Nie udało się wczytać TalentProgress: " +
+        GetPlayFabErrorText(error)
+    );
+
+    loadedTalentLevels.Clear();
+
+    TalentPoints = 0;
+
+    IsTalentPointsLoaded = true;
+    IsTalentProgressLoaded = true;
+    talentProgressLoadInProgress = false;
+
+    // Jeżeli mamy SkillTalentManager, poinformuj go,
+    // że wczytywanie talentów zostało zakończone.
+    if (SkillTalentManager.Instance != null)
+    {
+        SkillTalentManager.Instance.FinishLoading();
+    }
+}
 
     private void OnTalentProgressDataReceived(
         GetUserDataResult result)
