@@ -1632,36 +1632,38 @@ public class PlayFabManager : MonoBehaviour
         LoadTalentProgress();
     }
 
-    private void OnProgressionFailed(
-        PlayFabError error)
-    {
-        /*
-         * Najważniejsze:
-         *
-         * NIE:
-         *
-         * IsProgressionLoaded = false
-         *
-         * bo wtedy UI może wisieć.
-         */
-        IsProgressionLoaded = true;
+private void OnProgressionFailed(
+    PlayFabError error)
+{
+    /*
+     * Nie zerujemy PlayerXP.
+     *
+     * Jeżeli wcześniej mieliśmy poprawnie
+     * wczytane XP, zachowujemy je.
+     *
+     * Jeżeli jest to pierwsze uruchomienie,
+     * PlayerXP pozostaje wartością domyślną 0.
+     */
+    IsProgressionLoaded = true;
 
-        PlayerXP = 0.0;
-
-        PlayerLevel =
-            Mathf.Clamp(
-                startingLevel,
-                1,
-                maximumLevel
-            );
-
-        Debug.LogWarning(
-            "[PlayFabManager] Nie udało się pobrać progresji: " +
-            GetPlayFabErrorText(error)
+    PlayerLevel =
+        Mathf.Clamp(
+            PlayerLevel <= 0
+                ? startingLevel
+                : PlayerLevel,
+            1,
+            maximumLevel
         );
 
-        LoadTalentProgress();
-    }
+    Debug.LogWarning(
+        "[PlayFabManager] Nie udało się pobrać progresji: " +
+        GetPlayFabErrorText(error) +
+        ". Zachowuję lokalną wartość XP: " +
+        PlayerXP
+    );
+
+    LoadTalentProgress();
+}
 
     private bool HasUserDataKey(
         GetUserDataResult result,
@@ -1916,20 +1918,61 @@ public class PlayFabManager : MonoBehaviour
         /*
          * Brak Game Over - trzymamy XP osobno.
          */
-        pendingXP += damageDealt;
+pendingXP += damageDealt;
 
-        PersistPendingXP();
+/*
+ * Aktualizujemy XP natychmiast lokalnie.
+ *
+ * Dzięki temu menu główne i Game Over UI
+ * nie muszą czekać na odpowiedź PlayFab.
+ */
+PlayerXP += damageDealt;
 
-        XPResult result =
-            CalculateLocalXPResult(
-                damageDealt
-            );
+if (double.IsNaN(PlayerXP) ||
+    double.IsInfinity(PlayerXP) ||
+    PlayerXP < 0)
+{
+    PlayerXP = 0;
+}
 
-        result.success = true;
+/*
+ * Wyliczamy aktualny poziom na podstawie
+ * nowej lokalnej wartości XP.
+ */
+PlayerLevel =
+    CalculateLevelFromXP(
+        PlayerXP
+    );
 
-        callback?.Invoke(result);
+PersistPendingXP();
 
-        TryFlushPendingData();
+XPResult result =
+    new XPResult
+    {
+        success = true,
+        xpGained = damageDealt,
+        oldXP = PlayerXP - damageDealt,
+        newXP = PlayerXP,
+        oldLevel = CalculateLevelFromXP(
+            Math.Max(
+                0,
+                PlayerXP - damageDealt
+            )
+        ),
+        newLevel = PlayerLevel,
+        levelsGained = 0
+    };
+
+result.levelsGained =
+    Mathf.Max(
+        0,
+        result.newLevel -
+        result.oldLevel
+    );
+
+callback?.Invoke(result);
+
+TryFlushPendingData();
     }
 
     private XPResult CalculateLocalXPResult(
@@ -2839,7 +2882,7 @@ public class PlayFabManager : MonoBehaviour
                     ReadDoubleUserData(
                         result,
                         PLAYER_XP_KEY,
-                        0.0
+                        PlayerXP
                     );
 
                 int serverLevel =
