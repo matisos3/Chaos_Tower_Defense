@@ -10,32 +10,27 @@ using PlayFab.AuthenticationModels;
 
 using ProgressionModels = PlayFab.ProgressionModels;
 
-
 public class PlayFabManager : MonoBehaviour
 {
     public static PlayFabManager Instance;
-
 
     // =========================================================
     // LOGIN
     // =========================================================
 
     public bool IsLoggedIn { get; private set; }
-    public string PlayFabId { get; private set; }
-
+    public string PlayFabId { get; private set; } = "";
 
     // =========================================================
-    // ENTITY LOGIN
+    // ENTITY
     // =========================================================
 
     public bool IsEntityLoggedIn { get; private set; }
-
-    public string EntityId { get; private set; }
-    public string EntityType { get; private set; }
-    public string EntityToken { get; private set; }
+    public string EntityId { get; private set; } = "";
+    public string EntityType { get; private set; } = "";
+    public string EntityToken { get; private set; } = "";
 
     private PlayFabAuthenticationInstanceAPI authenticationAPI;
-
 
     // =========================================================
     // PROFIL
@@ -44,15 +39,13 @@ public class PlayFabManager : MonoBehaviour
     public string PlayerDisplayName { get; private set; } = "";
     public string PlayerAvatarId { get; private set; } = "";
 
-    public bool IsProfileLoaded { get; private set; } = false;
-    public bool HasPlayerProfile { get; private set; } = false;
+    public bool IsProfileLoaded { get; private set; }
+    public bool HasPlayerProfile { get; private set; }
+
+    public bool PlayerNameChangeUsed { get; private set; }
 
     private const string PLAYER_AVATAR_KEY = "Avatar";
-    private const string PLAYER_NAME_CHANGE_USED_KEY =
-        "PlayerNameChangeUsed";
-
-    public bool PlayerNameChangeUsed { get; private set; } = false;
-
+    private const string PLAYER_NAME_CHANGE_USED_KEY = "PlayerNameChangeUsed";
 
     // =========================================================
     // PROGRESJA
@@ -84,25 +77,24 @@ public class PlayFabManager : MonoBehaviour
     private const int STARTING_FORGET_POINTS = 10;
     private const int FORGET_POINTS_PER_PLAYER_LEVEL = 4;
 
-    public double PlayerXP { get; private set; } = 0.0;
-
+    public double PlayerXP { get; private set; }
     public int PlayerLevel { get; private set; } = 1;
 
-    public int TalentPoints { get; private set; } = 0;
+    public int TalentPoints { get; private set; }
+    public int ForgetPoints { get; private set; } =
+        STARTING_FORGET_POINTS;
 
-    public int ForgetPoints { get; private set; } = STARTING_FORGET_POINTS;
+    public bool IsTalentPointsLoaded { get; private set; }
 
-    public bool IsTalentPointsLoaded { get; private set; } = false;
+    // JEDYNA definicja tej właściwości.
+    public bool IsTalentProgressLoaded { get; private set; }
 
-    public bool IsTalentProgressLoaded { get; private set; } = false;
-
-    public bool IsProgressionLoaded { get; private set; } = false;
-
-    private bool talentProgressLoadInProgress = false;
+    public bool IsProgressionLoaded { get; private set; }
 
     private Dictionary<string, int> loadedTalentLevels =
         new Dictionary<string, int>();
 
+    private bool talentProgressLoadInProgress;
 
     // =========================================================
     // LEADERBOARD
@@ -123,67 +115,113 @@ public class PlayFabManager : MonoBehaviour
     public const string LEADERBOARD_ENEMIES_KILLED =
         "EnemiesKilled";
 
+    private bool pendingLeaderboardSave;
+
+    private int pendingLeaderboardHighestWave;
+    private double pendingLeaderboardDamage;
+    private int pendingLeaderboardEnemiesKilled;
 
     // =========================================================
-    // PENDING LEADERBOARD SAVE
+    // GAME ACCESS
     // =========================================================
 
-    private bool pendingLeaderboardSave = false;
-
-    private int pendingLeaderboardHighestWave = 0;
-    private double pendingLeaderboardDamage = 0.0;
-    private int pendingLeaderboardEnemiesKilled = 0;
-
-
-    // =========================================================
-    // DOSTĘP DO GRY
-    // =========================================================
-
-    public bool IsGameEnabled { get; private set; } = false;
-    public bool GameAccessChecked { get; private set; } = false;
+    public bool IsGameEnabled { get; private set; }
+    public bool GameAccessChecked { get; private set; }
 
     private const string GAME_ENABLED_KEY = "GameEnabled";
 
     private GameAccessBlockUI gameAccessUI;
 
-
     // =========================================================
-    // PENDING GAME OVER
+    // GAME OVER
     // =========================================================
 
-    private bool pendingGameOverStats = false;
+    private bool pendingGameOverStats;
 
-    private int pendingEnemiesKilled = 0;
-    private double pendingDamageDealt = 0.0;
-    private int pendingHighestWave = 0;
-    private int pendingGoldEarned = 0;
-    private int pendingGameDuration = 0;
-    private int pendingSkillsPurchased = 0;
-    private int pendingUpgradesPurchased = 0;
+    private int pendingEnemiesKilled;
+    private double pendingDamageDealt;
+    private int pendingHighestWave;
+    private int pendingGoldEarned;
+    private int pendingGameDuration;
+    private int pendingSkillsPurchased;
+    private int pendingUpgradesPurchased;
 
     private string pendingBuildSkills = "";
     private string pendingBuildUpgrades = "";
     private string pendingBuildSummary = "";
 
-    private bool gameOverStatsSaved = false;
+    /*
+     * Czy statystyki PlayFab zostały już zapisane.
+     *
+     * To bardzo ważne.
+     *
+     * Jeżeli:
+     * 1. zapis statystyk się uda,
+     * 2. potem internet zniknie,
+     *
+     * po ponownym uruchomieniu nie dodamy tych samych
+     * statystyk drugi raz.
+     */
+    private bool pendingGameOverStatisticsUpdated;
 
-    private Action<bool> pendingGameOverStatsCallback = null;
-    private bool gameOverSaveInProgress = false;
-    private bool pendingGameOverStatisticsUpdated = false;
+    /*
+     * Czy UserData Game Over została zapisana.
+     */
+    private bool pendingGameOverUserDataUpdated;
 
-    private const string PENDING_GAMEOVER_KEY = "PendingGameOverStats";
-    private const string PENDING_GAMEOVER_ENEMIES_KEY = "PendingGameOver_EnemiesKilled";
-    private const string PENDING_GAMEOVER_DAMAGE_KEY = "PendingGameOver_DamageDealt";
-    private const string PENDING_GAMEOVER_WAVE_KEY = "PendingGameOver_HighestWave";
-    private const string PENDING_GAMEOVER_GOLD_KEY = "PendingGameOver_GoldEarned";
-    private const string PENDING_GAMEOVER_DURATION_KEY = "PendingGameOver_GameDuration";
-    private const string PENDING_GAMEOVER_SKILLS_KEY = "PendingGameOver_SkillsPurchased";
-    private const string PENDING_GAMEOVER_UPGRADES_KEY = "PendingGameOver_UpgradesPurchased";
-    private const string PENDING_GAMEOVER_BUILD_SKILLS_KEY = "PendingGameOver_BuildSkills";
-    private const string PENDING_GAMEOVER_BUILD_UPGRADES_KEY = "PendingGameOver_BuildUpgrades";
-    private const string PENDING_GAMEOVER_BUILD_SUMMARY_KEY = "PendingGameOver_BuildSummary";
-    private const string PENDING_GAMEOVER_STATS_UPDATED_KEY = "PendingGameOver_StatisticsUpdated";
+    private bool gameOverSaveInProgress;
 
+    // =========================================================
+    // XP QUEUE
+    // =========================================================
+
+    private double pendingXP;
+
+    private const string PENDING_XP_KEY =
+        "PlayFab_PendingXP";
+
+    // =========================================================
+    // PLAYER PREFS - GAME OVER
+    // =========================================================
+
+    private const string PENDING_GAMEOVER_KEY =
+        "PendingGameOverStats";
+
+    private const string PENDING_GAMEOVER_ENEMIES_KEY =
+        "PendingGameOver_EnemiesKilled";
+
+    private const string PENDING_GAMEOVER_DAMAGE_KEY =
+        "PendingGameOver_DamageDealt";
+
+    private const string PENDING_GAMEOVER_WAVE_KEY =
+        "PendingGameOver_HighestWave";
+
+    private const string PENDING_GAMEOVER_GOLD_KEY =
+        "PendingGameOver_GoldEarned";
+
+    private const string PENDING_GAMEOVER_DURATION_KEY =
+        "PendingGameOver_GameDuration";
+
+    private const string PENDING_GAMEOVER_SKILLS_KEY =
+        "PendingGameOver_SkillsPurchased";
+
+    private const string PENDING_GAMEOVER_UPGRADES_KEY =
+        "PendingGameOver_UpgradesPurchased";
+
+    private const string PENDING_GAMEOVER_BUILD_SKILLS_KEY =
+        "PendingGameOver_BuildSkills";
+
+    private const string PENDING_GAMEOVER_BUILD_UPGRADES_KEY =
+        "PendingGameOver_BuildUpgrades";
+
+    private const string PENDING_GAMEOVER_BUILD_SUMMARY_KEY =
+        "PendingGameOver_BuildSummary";
+
+    private const string PENDING_GAMEOVER_STATS_UPDATED_KEY =
+        "PendingGameOver_StatisticsUpdated";
+
+    private const string PENDING_GAMEOVER_USERDATA_UPDATED_KEY =
+        "PendingGameOver_UserDataUpdated";
 
     // =========================================================
     // UNITY
@@ -199,17 +237,15 @@ public class PlayFabManager : MonoBehaviour
 
         Instance = this;
 
-        transform.SetParent(null);
         DontDestroyOnLoad(gameObject);
 
-        LoadPendingGameOverStats();
+        LoadPendingData();
     }
 
     private void Start()
     {
         Login();
     }
-
 
     // =========================================================
     // LOGIN
@@ -220,39 +256,51 @@ public class PlayFabManager : MonoBehaviour
         IsLoggedIn = false;
 
         IsEntityLoggedIn = false;
+
+        PlayFabId = "";
+
         EntityId = "";
         EntityType = "";
         EntityToken = "";
 
-        GameAccessChecked = false;
-        IsGameEnabled = false;
-
         IsProfileLoaded = false;
         HasPlayerProfile = false;
-
-        IsProgressionLoaded = false;
 
         PlayerDisplayName = "";
         PlayerAvatarId = "";
         PlayerNameChangeUsed = false;
 
         PlayerXP = 0.0;
+
         PlayerLevel =
-            Mathf.Max(
+            Mathf.Clamp(
+                startingLevel,
                 1,
-                startingLevel
+                maximumLevel
             );
 
         TalentPoints = 0;
         ForgetPoints = STARTING_FORGET_POINTS;
+
         IsTalentPointsLoaded = false;
         IsTalentProgressLoaded = false;
+        IsProgressionLoaded = false;
 
         talentProgressLoadInProgress = false;
 
         loadedTalentLevels.Clear();
 
-        pendingLeaderboardSave = false;
+        /*
+         * Bardzo ważne:
+         *
+         * brak PlayFab NIE oznacza:
+         *
+         * "gra jest zablokowana".
+         *
+         * Gra może działać offline.
+         */
+        GameAccessChecked = false;
+        IsGameEnabled = true;
 
         string customId =
             GetOrCreateLocalPlayerId();
@@ -271,69 +319,113 @@ public class PlayFabManager : MonoBehaviour
         );
     }
 
-
     private string GetOrCreateLocalPlayerId()
     {
         const string key =
             "PLAYFAB_LOCAL_PLAYER_ID";
 
-        string existingId =
+        string id =
             PlayerPrefs.GetString(
                 key,
                 ""
             );
 
-        if (!string.IsNullOrEmpty(existingId))
-            return existingId;
+        if (!string.IsNullOrEmpty(id))
+            return id;
 
-        string newId =
-            Guid.NewGuid().ToString();
+        id = Guid.NewGuid().ToString();
 
         PlayerPrefs.SetString(
             key,
-            newId
+            id
         );
 
         PlayerPrefs.Save();
 
-        return newId;
+        return id;
     }
-
 
     // =========================================================
     // LOGIN SUCCESS
     // =========================================================
 
-    private void OnLoginSuccess(
-        LoginResult result)
+    private void OnLoginSuccess(LoginResult result)
     {
         IsLoggedIn = true;
 
         PlayFabId =
-            result.PlayFabId;
+            result != null
+                ? result.PlayFabId
+                : "";
 
         Debug.Log(
-            "[PlayFabManager] Zalogowano. PlayFabId: " +
+            "[PlayFabManager] Logowanie OK. PlayFabId = " +
             PlayFabId
         );
 
         GetEntityToken();
 
-        if (result.NewlyCreated)
-            CreateInitialPlayerData();
-        else
-            LoadPlayerData();
-
-        // Najpierw progresja.
-        // Dopiero po jej wczytaniu wczytujemy TalentProgress.
+        LoadPlayerProfile();
         LoadPlayerProgression();
 
         CheckGameAccess();
 
-        if (pendingGameOverStats && !gameOverSaveInProgress)
-            SavePendingGameOverStats();
+        /*
+         * Najważniejsze:
+         *
+         * pending data nie blokuje sceny.
+         *
+         * Próba wysłania odbywa się w tle.
+         */
+        Invoke(
+            nameof(TryFlushPendingData),
+            0.5f
+        );
     }
 
+    // =========================================================
+    // LOGIN FAILURE
+    // =========================================================
+
+    private void OnLoginFailure(PlayFabError error)
+    {
+        IsLoggedIn = false;
+        IsEntityLoggedIn = false;
+
+        EntityToken = "";
+        EntityId = "";
+        EntityType = "";
+
+        /*
+         * OFFLINE MODE.
+         *
+         * Wszystkie flagi gotowości ustawiamy tak,
+         * aby żaden ekran ładowania nie wisiał
+         * w nieskończoność.
+         */
+        IsProfileLoaded = true;
+        IsProgressionLoaded = true;
+        IsTalentProgressLoaded = true;
+        IsTalentPointsLoaded = true;
+
+        GameAccessChecked = true;
+        IsGameEnabled = true;
+
+        PlayerLevel =
+            Mathf.Clamp(
+                startingLevel,
+                1,
+                maximumLevel
+            );
+
+        Debug.LogWarning(
+            "[PlayFabManager] PlayFab niedostępny. " +
+            "Gra przechodzi w tryb offline. " +
+            GetPlayFabErrorText(error)
+        );
+
+        ApplyGameAccessToUI();
+    }
 
     // =========================================================
     // ENTITY TOKEN
@@ -342,68 +434,32 @@ public class PlayFabManager : MonoBehaviour
     private void GetEntityToken()
     {
         if (!IsLoggedIn)
-        {
-            Debug.LogWarning(
-                "[PlayFabManager] Nie można pobrać Entity Token - " +
-                "brak logowania."
-            );
-
             return;
-        }
 
         authenticationAPI =
             new PlayFabAuthenticationInstanceAPI(
                 PlayFabSettings.staticPlayer
             );
 
-        GetEntityTokenRequest request =
-            new GetEntityTokenRequest();
-
         authenticationAPI.GetEntityToken(
-            request,
+            new GetEntityTokenRequest(),
             OnEntityTokenReceived,
             OnEntityTokenFailed
         );
     }
 
-
     private void OnEntityTokenReceived(
         GetEntityTokenResponse result)
     {
-        if (result == null)
+        if (result == null ||
+            result.Entity == null ||
+            string.IsNullOrEmpty(result.EntityToken))
         {
             OnEntityTokenFailed(
                 new PlayFabError
                 {
                     ErrorMessage =
-                        "PlayFab zwrócił pustą odpowiedź Entity Token."
-                }
-            );
-
-            return;
-        }
-
-        if (result.Entity == null)
-        {
-            OnEntityTokenFailed(
-                new PlayFabError
-                {
-                    ErrorMessage =
-                        "PlayFab nie zwrócił EntityKey."
-                }
-            );
-
-            return;
-        }
-
-        if (string.IsNullOrEmpty(
-            result.EntityToken))
-        {
-            OnEntityTokenFailed(
-                new PlayFabError
-                {
-                    ErrorMessage =
-                        "PlayFab nie zwrócił EntityToken."
+                        "Brak Entity Token."
                 }
             );
 
@@ -420,26 +476,19 @@ public class PlayFabManager : MonoBehaviour
             result.Entity.Type;
 
         PlayFabSettings.staticPlayer.EntityToken =
-            result.EntityToken;
+            EntityToken;
 
         PlayFabSettings.staticPlayer.EntityId =
-            result.Entity.Id;
+            EntityId;
 
         PlayFabSettings.staticPlayer.EntityType =
-            result.Entity.Type;
+            EntityType;
 
         IsEntityLoggedIn =
-            PlayFabSettings.staticPlayer
-                .IsEntityLoggedIn();
+            PlayFabSettings.staticPlayer.IsEntityLoggedIn();
 
         Debug.Log(
-            "[PlayFabManager] Entity Token pobrany. " +
-            "EntityId: " +
-            EntityId +
-            ", EntityType: " +
-            EntityType +
-            ", IsEntityLoggedIn: " +
-            IsEntityLoggedIn
+            "[PlayFabManager] Entity Token OK."
         );
 
         if (pendingLeaderboardSave)
@@ -461,8 +510,9 @@ public class PlayFabManager : MonoBehaviour
                 kills
             );
         }
-    }
 
+        TryFlushPendingData();
+    }
 
     private void OnEntityTokenFailed(
         PlayFabError error)
@@ -473,114 +523,65 @@ public class PlayFabManager : MonoBehaviour
         EntityId = "";
         EntityType = "";
 
-        Debug.LogError(
-            "[PlayFabManager] Nie udało się pobrać " +
-            "Entity Token: " +
+        Debug.LogWarning(
+            "[PlayFabManager] Entity Token niedostępny: " +
             GetPlayFabErrorText(error)
         );
     }
-
-
-    // =========================================================
-    // LOGIN FAILURE
-    // =========================================================
-
-    private void OnLoginFailure(
-        PlayFabError error)
-    {
-        IsLoggedIn = false;
-        IsEntityLoggedIn = false;
-
-        EntityToken = "";
-        EntityId = "";
-        EntityType = "";
-
-        GameAccessChecked = true;
-        IsGameEnabled = false;
-
-        IsProfileLoaded = false;
-        HasPlayerProfile = false;
-
-        IsProgressionLoaded = false;
-        IsTalentProgressLoaded = false;
-        IsTalentPointsLoaded = false;
-
-        ApplyGameAccessToUI();
-
-        Debug.LogError(
-            "[PlayFabManager] Logowanie nieudane: " +
-            GetPlayFabErrorText(error)
-        );
-    }
-
 
     // =========================================================
     // PROFIL
     // =========================================================
 
-    private void LoadPlayerData()
-    {
-        LoadPlayerProfile();
-    }
-
-
-    private void CreateInitialPlayerData()
-    {
-        LoadPlayerProfile();
-    }
-
-
     public void LoadPlayerProfile()
     {
         if (!IsLoggedIn)
         {
-            IsProfileLoaded = false;
-            HasPlayerProfile = false;
-
+            IsProfileLoaded = true;
             return;
         }
 
         IsProfileLoaded = false;
-        HasPlayerProfile = false;
-
-        PlayerDisplayName = "";
-        PlayerAvatarId = "";
-        PlayerNameChangeUsed = false;
 
         PlayFabClientAPI.GetAccountInfo(
             new GetAccountInfoRequest(),
-            OnPlayerAccountInfoReceived,
-            OnPlayerAccountInfoFailed
+            OnAccountInfoReceived,
+            OnAccountInfoFailed
         );
     }
 
-
-    private void OnPlayerAccountInfoReceived(
+    private void OnAccountInfoReceived(
         GetAccountInfoResult result)
     {
+        PlayerDisplayName = "";
+
         if (result != null &&
             result.AccountInfo != null &&
             result.AccountInfo.TitleInfo != null)
         {
             PlayerDisplayName =
-                result.AccountInfo.TitleInfo
-                    .DisplayName ?? "";
+                result.AccountInfo.TitleInfo.DisplayName ?? "";
         }
 
-        LoadPlayerAvatar();
+        PlayFabClientAPI.GetUserData(
+            new GetUserDataRequest(),
+            OnProfileUserDataReceived,
+            OnProfileUserDataFailed
+        );
     }
 
-
-    private void OnPlayerAccountInfoFailed(
+    private void OnAccountInfoFailed(
         PlayFabError error)
     {
         PlayerDisplayName = "";
 
-        LoadPlayerAvatar();
+        /*
+         * Nie zostawiamy IsProfileLoaded = false.
+         */
+        LoadProfileUserData();
     }
 
-
-    private void LoadPlayerAvatar()
+    private void LoadProfileUserData()
     {
         if (!IsLoggedIn)
         {
@@ -590,13 +591,12 @@ public class PlayFabManager : MonoBehaviour
 
         PlayFabClientAPI.GetUserData(
             new GetUserDataRequest(),
-            OnPlayerUserDataReceived,
-            OnPlayerUserDataFailed
+            OnProfileUserDataReceived,
+            OnProfileUserDataFailed
         );
     }
 
-
-    private void OnPlayerUserDataReceived(
+    private void OnProfileUserDataReceived(
         GetUserDataResult result)
     {
         PlayerAvatarId = "";
@@ -605,39 +605,27 @@ public class PlayFabManager : MonoBehaviour
         if (result != null &&
             result.Data != null)
         {
-            if (result.Data.ContainsKey(
-                PLAYER_AVATAR_KEY))
+            if (result.Data.TryGetValue(
+                PLAYER_AVATAR_KEY,
+                out UserDataRecord avatar))
             {
-                UserDataRecord avatarRecord =
-                    result.Data[
-                        PLAYER_AVATAR_KEY
-                    ];
-
-                if (avatarRecord != null)
-                {
-                    PlayerAvatarId =
-                        avatarRecord.Value ?? "";
-                }
+                if (avatar != null)
+                    PlayerAvatarId = avatar.Value ?? "";
             }
 
-            if (result.Data.ContainsKey(
-                PLAYER_NAME_CHANGE_USED_KEY))
+            if (result.Data.TryGetValue(
+                PLAYER_NAME_CHANGE_USED_KEY,
+                out UserDataRecord nameChange))
             {
-                UserDataRecord nameChangeRecord =
-                    result.Data[
-                        PLAYER_NAME_CHANGE_USED_KEY
-                    ];
-
-                if (nameChangeRecord != null)
+                if (nameChange != null)
                 {
-                    bool parsedValue;
+                    bool value;
 
                     if (bool.TryParse(
-                        nameChangeRecord.Value,
-                        out parsedValue))
+                        nameChange.Value,
+                        out value))
                     {
-                        PlayerNameChangeUsed =
-                            parsedValue;
+                        PlayerNameChangeUsed = value;
                     }
                 }
             }
@@ -646,8 +634,7 @@ public class PlayFabManager : MonoBehaviour
         FinishProfileLoading();
     }
 
-
-    private void OnPlayerUserDataFailed(
+    private void OnProfileUserDataFailed(
         PlayFabError error)
     {
         PlayerAvatarId = "";
@@ -656,26 +643,37 @@ public class PlayFabManager : MonoBehaviour
         FinishProfileLoading();
     }
 
-
     private void FinishProfileLoading()
     {
         IsProfileLoaded = true;
 
         HasPlayerProfile =
-            !string.IsNullOrWhiteSpace(
-                PlayerDisplayName
-            ) &&
-            !string.IsNullOrWhiteSpace(
-                PlayerAvatarId
-            );
+            !string.IsNullOrWhiteSpace(PlayerDisplayName) &&
+            !string.IsNullOrWhiteSpace(PlayerAvatarId);
     }
-
 
     public bool CanChangePlayerName()
     {
         return !PlayerNameChangeUsed;
     }
 
+    public bool IsPlayerProfileComplete()
+    {
+        return
+            IsLoggedIn &&
+            IsProfileLoaded &&
+            HasPlayerProfile;
+    }
+
+    public string GetPlayerDisplayName()
+    {
+        return PlayerDisplayName;
+    }
+
+    public string GetPlayerAvatarId()
+    {
+        return PlayerAvatarId;
+    }
 
     // =========================================================
     // USTAWIANIE PROFILU
@@ -690,14 +688,13 @@ public class PlayFabManager : MonoBehaviour
         {
             callback?.Invoke(
                 false,
-                "Gracz nie jest zalogowany."
+                "Brak połączenia z PlayFab."
             );
 
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(
-            displayName))
+        if (string.IsNullOrWhiteSpace(displayName))
         {
             callback?.Invoke(
                 false,
@@ -707,8 +704,7 @@ public class PlayFabManager : MonoBehaviour
             return;
         }
 
-        displayName =
-            displayName.Trim();
+        displayName = displayName.Trim();
 
         if (displayName.Length < 3)
         {
@@ -730,8 +726,7 @@ public class PlayFabManager : MonoBehaviour
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(
-            avatarId))
+        if (string.IsNullOrWhiteSpace(avatarId))
         {
             callback?.Invoke(
                 false,
@@ -741,86 +736,19 @@ public class PlayFabManager : MonoBehaviour
             return;
         }
 
-        bool hasExistingProfile =
-            HasPlayerProfile;
-
-        if (!hasExistingProfile)
-        {
-            PlayFabClientAPI.UpdateUserTitleDisplayName(
-                new UpdateUserTitleDisplayNameRequest
-                {
-                    DisplayName = displayName
-                },
-                result =>
-                {
-                    if (result == null ||
-                        string.IsNullOrEmpty(
-                            result.DisplayName))
-                    {
-                        callback?.Invoke(
-                            false,
-                            "Nie udało się zapisać nazwy profilu."
-                        );
-
-                        return;
-                    }
-
-                    PlayerDisplayName =
-                        result.DisplayName;
-
-                    PlayerNameChangeUsed = false;
-
-                    SavePlayerAvatar(
-                        avatarId,
-                        callback
-                    );
-                },
-                error =>
-                {
-                    if (error != null &&
-                        error.Error ==
-                        PlayFabErrorCode.NameNotAvailable)
-                    {
-                        callback?.Invoke(
-                            false,
-                            "Ta nazwa jest już zajęta."
-                        );
-
-                        return;
-                    }
-
-                    callback?.Invoke(
-                        false,
-                        GetProfileErrorMessage(error)
-                    );
-                }
-            );
-
-            return;
-        }
-
-        bool isNameChange =
+        bool changingName =
+            !string.IsNullOrWhiteSpace(PlayerDisplayName) &&
             !string.Equals(
                 displayName,
                 PlayerDisplayName,
                 StringComparison.Ordinal
             );
 
-        if (!isNameChange)
-        {
-            SavePlayerAvatar(
-                avatarId,
-                callback
-            );
-
-            return;
-        }
-
-        if (PlayerNameChangeUsed)
+        if (changingName && PlayerNameChangeUsed)
         {
             callback?.Invoke(
                 false,
-                "Wykorzystałeś już jedyną zmianę nazwy profilu."
+                "Wykorzystałeś już zmianę nazwy."
             );
 
             return;
@@ -833,42 +761,20 @@ public class PlayFabManager : MonoBehaviour
             },
             result =>
             {
-                if (result == null ||
-                    string.IsNullOrEmpty(
-                        result.DisplayName))
-                {
-                    callback?.Invoke(
-                        false,
-                        "Nie udało się zmienić nazwy profilu."
-                    );
-
-                    return;
-                }
-
                 PlayerDisplayName =
                     result.DisplayName;
 
-                PlayerNameChangeUsed = true;
+                if (changingName)
+                    PlayerNameChangeUsed = true;
 
-                SavePlayerAvatarAndNameChangeFlag(
+                SaveProfileUserData(
                     avatarId,
+                    changingName,
                     callback
                 );
             },
             error =>
             {
-                if (error != null &&
-                    error.Error ==
-                    PlayFabErrorCode.NameNotAvailable)
-                {
-                    callback?.Invoke(
-                        false,
-                        "Ta nazwa jest już zajęta."
-                    );
-
-                    return;
-                }
-
                 callback?.Invoke(
                     false,
                     GetProfileErrorMessage(error)
@@ -877,64 +783,9 @@ public class PlayFabManager : MonoBehaviour
         );
     }
 
-
-    private void SavePlayerAvatarAndNameChangeFlag(
+    private void SaveProfileUserData(
         string avatarId,
-        Action<bool, string> callback)
-    {
-        Dictionary<string, string> data =
-            new Dictionary<string, string>
-            {
-                {
-                    PLAYER_AVATAR_KEY,
-                    avatarId
-                },
-                {
-                    PLAYER_NAME_CHANGE_USED_KEY,
-                    "true"
-                }
-            };
-
-        PlayFabClientAPI.UpdateUserData(
-            new UpdateUserDataRequest
-            {
-                Data = data
-            },
-            result =>
-            {
-                PlayerAvatarId =
-                    avatarId;
-
-                PlayerNameChangeUsed = true;
-
-                IsProfileLoaded = true;
-
-                HasPlayerProfile =
-                    !string.IsNullOrWhiteSpace(
-                        PlayerDisplayName
-                    ) &&
-                    !string.IsNullOrWhiteSpace(
-                        PlayerAvatarId
-                    );
-
-                callback?.Invoke(
-                    true,
-                    ""
-                );
-            },
-            error =>
-            {
-                callback?.Invoke(
-                    false,
-                    GetProfileErrorMessage(error)
-                );
-            }
-        );
-    }
-
-
-    private void SavePlayerAvatar(
-        string avatarId,
+        bool nameChanged,
         Action<bool, string> callback)
     {
         Dictionary<string, string> data =
@@ -946,6 +797,13 @@ public class PlayFabManager : MonoBehaviour
                 }
             };
 
+        if (nameChanged)
+        {
+            data[
+                PLAYER_NAME_CHANGE_USED_KEY
+            ] = "true";
+        }
+
         PlayFabClientAPI.UpdateUserData(
             new UpdateUserDataRequest
             {
@@ -953,23 +811,15 @@ public class PlayFabManager : MonoBehaviour
             },
             result =>
             {
-                PlayerAvatarId =
-                    avatarId;
+                PlayerAvatarId = avatarId;
 
                 IsProfileLoaded = true;
 
                 HasPlayerProfile =
-                    !string.IsNullOrWhiteSpace(
-                        PlayerDisplayName
-                    ) &&
-                    !string.IsNullOrWhiteSpace(
-                        PlayerAvatarId
-                    );
+                    !string.IsNullOrWhiteSpace(PlayerDisplayName) &&
+                    !string.IsNullOrWhiteSpace(PlayerAvatarId);
 
-                callback?.Invoke(
-                    true,
-                    ""
-                );
+                callback?.Invoke(true, "");
             },
             error =>
             {
@@ -980,7 +830,6 @@ public class PlayFabManager : MonoBehaviour
             }
         );
     }
-
 
     public void SetPlayerAvatar(
         string avatarId,
@@ -990,14 +839,13 @@ public class PlayFabManager : MonoBehaviour
         {
             callback?.Invoke(
                 false,
-                "Gracz nie jest zalogowany."
+                "Brak połączenia z PlayFab."
             );
 
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(
-            avatarId))
+        if (string.IsNullOrWhiteSpace(avatarId))
         {
             callback?.Invoke(
                 false,
@@ -1007,173 +855,56 @@ public class PlayFabManager : MonoBehaviour
             return;
         }
 
-        SavePlayerAvatar(
-            avatarId,
-            callback
+        PlayFabClientAPI.UpdateUserData(
+            new UpdateUserDataRequest
+            {
+                Data =
+                    new Dictionary<string, string>
+                    {
+                        {
+                            PLAYER_AVATAR_KEY,
+                            avatarId
+                        }
+                    }
+            },
+            result =>
+            {
+                PlayerAvatarId = avatarId;
+
+                IsProfileLoaded = true;
+
+                HasPlayerProfile =
+                    !string.IsNullOrWhiteSpace(PlayerDisplayName) &&
+                    !string.IsNullOrWhiteSpace(PlayerAvatarId);
+
+                callback?.Invoke(true, "");
+            },
+            error =>
+            {
+                callback?.Invoke(
+                    false,
+                    GetProfileErrorMessage(error)
+                );
+            }
         );
     }
-
 
     public void SetPlayerDisplayName(
         string displayName,
         Action<bool, string> callback = null)
     {
-        if (!IsLoggedIn)
-        {
-            callback?.Invoke(
-                false,
-                "Gracz nie jest zalogowany."
-            );
-
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(
-            displayName))
-        {
-            callback?.Invoke(
-                false,
-                "Nazwa gracza nie może być pusta."
-            );
-
-            return;
-        }
-
-        displayName =
-            displayName.Trim();
-
-        if (displayName.Length < 3)
-        {
-            callback?.Invoke(
-                false,
-                "Nazwa musi mieć co najmniej 3 znaki."
-            );
-
-            return;
-        }
-
-        if (displayName.Length > 25)
-        {
-            callback?.Invoke(
-                false,
-                "Nazwa może mieć maksymalnie 25 znaków."
-            );
-
-            return;
-        }
-
-        if (string.Equals(
+        SetPlayerProfile(
             displayName,
-            PlayerDisplayName,
-            StringComparison.Ordinal))
-        {
-            callback?.Invoke(
-                true,
-                ""
-            );
-
-            return;
-        }
-
-        if (PlayerNameChangeUsed)
-        {
-            callback?.Invoke(
-                false,
-                "Wykorzystałeś już jedyną zmianę nazwy profilu."
-            );
-
-            return;
-        }
-
-        PlayFabClientAPI.UpdateUserTitleDisplayName(
-            new UpdateUserTitleDisplayNameRequest
-            {
-                DisplayName = displayName
-            },
-            result =>
-            {
-                PlayerDisplayName =
-                    result.DisplayName;
-
-                PlayerNameChangeUsed = true;
-
-                SaveNameChangeFlag(
-                    callback
-                );
-            },
-            error =>
-            {
-                if (error.Error ==
-                    PlayFabErrorCode.NameNotAvailable)
-                {
-                    callback?.Invoke(
-                        false,
-                        "Ta nazwa jest już zajęta."
-                    );
-
-                    return;
-                }
-
-                callback?.Invoke(
-                    false,
-                    GetProfileErrorMessage(error)
-                );
-            }
+            PlayerAvatarId,
+            callback
         );
     }
-
-
-    private void SaveNameChangeFlag(
-        Action<bool, string> callback)
-    {
-        Dictionary<string, string> data =
-            new Dictionary<string, string>
-            {
-                {
-                    PLAYER_NAME_CHANGE_USED_KEY,
-                    "true"
-                }
-            };
-
-        PlayFabClientAPI.UpdateUserData(
-            new UpdateUserDataRequest
-            {
-                Data = data
-            },
-            result =>
-            {
-                PlayerNameChangeUsed = true;
-                IsProfileLoaded = true;
-
-                HasPlayerProfile =
-                    !string.IsNullOrWhiteSpace(
-                        PlayerDisplayName
-                    ) &&
-                    !string.IsNullOrWhiteSpace(
-                        PlayerAvatarId
-                    );
-
-                callback?.Invoke(
-                    true,
-                    ""
-                );
-            },
-            error =>
-            {
-                callback?.Invoke(
-                    false,
-                    GetProfileErrorMessage(error)
-                );
-            }
-        );
-    }
-
 
     private string GetProfileErrorMessage(
         PlayFabError error)
     {
         if (error == null)
-            return "Wystąpił nieznany błąd.";
+            return "Nieznany błąd.";
 
         if (error.Error ==
             PlayFabErrorCode.ProfaneDisplayName)
@@ -1187,50 +918,25 @@ public class PlayFabManager : MonoBehaviour
             return "Ta nazwa jest już zajęta.";
         }
 
-        if (!string.IsNullOrEmpty(
-            error.ErrorMessage))
-        {
+        if (!string.IsNullOrEmpty(error.ErrorMessage))
             return error.ErrorMessage;
-        }
 
         return "Nie udało się zapisać profilu.";
     }
 
-
-    public bool IsPlayerProfileComplete()
-    {
-        return IsLoggedIn &&
-               IsProfileLoaded &&
-               HasPlayerProfile;
-    }
-
-
-    public string GetPlayerDisplayName()
-    {
-        return PlayerDisplayName;
-    }
-
-
-    public string GetPlayerAvatarId()
-    {
-        return PlayerAvatarId;
-    }
-
-
     // =========================================================
-    // TALENT PROGRESS - MODELE
+    // TALENT DATA
     // =========================================================
 
     [Serializable]
     private class TalentProgressSaveData
     {
-        public int talentPoints = 0;
-        public int forgetPoints = STARTING_FORGET_POINTS;
+        public int talentPoints;
+        public int forgetPoints;
 
         public List<TalentLevelSaveData> talents =
             new List<TalentLevelSaveData>();
     }
-
 
     [Serializable]
     private class TalentLevelSaveData
@@ -1239,36 +945,16 @@ public class PlayFabManager : MonoBehaviour
         public int level;
     }
 
-
     // =========================================================
-    // TALENT PROGRESS - PUBLIC STATUS
-    // =========================================================
-
-    public bool IsTalentProgressLoaded
-    {
-        get
-        {
-            return IsTalentProgressLoadedInternal;
-        }
-    }
-
-    private bool IsTalentProgressLoadedInternal = false;
-
-
-    // =========================================================
-    // TALENTY - LOAD
+    // TALENT LOAD
     // =========================================================
 
     public void LoadTalentProgress()
     {
         if (!IsLoggedIn)
         {
-            IsTalentProgressLoadedInternal = false;
-            IsTalentPointsLoaded = false;
-            TalentPoints = 0;
-            ForgetPoints = STARTING_FORGET_POINTS;
-            loadedTalentLevels.Clear();
-
+            IsTalentProgressLoaded = true;
+            IsTalentPointsLoaded = true;
             return;
         }
 
@@ -1277,53 +963,38 @@ public class PlayFabManager : MonoBehaviour
 
         talentProgressLoadInProgress = true;
 
-        IsTalentProgressLoadedInternal = false;
-        IsTalentPointsLoaded = false;
-
         PlayFabClientAPI.GetUserData(
             new GetUserDataRequest(),
-            OnTalentProgressDataReceived,
-            OnTalentProgressDataFailed
+            OnTalentProgressReceived,
+            OnTalentProgressFailed
         );
     }
 
-
-    private void OnTalentProgressDataReceived(
+    private void OnTalentProgressReceived(
         GetUserDataResult result)
     {
         talentProgressLoadInProgress = false;
-
-        bool loadedUnifiedProgress =
-            false;
 
         loadedTalentLevels.Clear();
 
         int loadedPoints = 0;
         int loadedForgetPoints = STARTING_FORGET_POINTS;
 
-        // =====================================================
-        // 1. NOWY SYSTEM
-        // =====================================================
+        bool loadedUnified = false;
 
         if (result != null &&
             result.Data != null &&
-            result.Data.ContainsKey(
-                PLAYER_TALENT_PROGRESS_KEY))
+            result.Data.TryGetValue(
+                PLAYER_TALENT_PROGRESS_KEY,
+                out UserDataRecord record))
         {
-            UserDataRecord record =
-                result.Data[
-                    PLAYER_TALENT_PROGRESS_KEY
-                ];
-
             if (record != null &&
-                !string.IsNullOrWhiteSpace(
-                    record.Value))
+                !string.IsNullOrWhiteSpace(record.Value))
             {
                 try
                 {
                     TalentProgressSaveData saveData =
-                        JsonUtility.FromJson<
-                            TalentProgressSaveData>(
+                        JsonUtility.FromJson<TalentProgressSaveData>(
                             record.Value
                         );
 
@@ -1341,12 +1012,8 @@ public class PlayFabManager : MonoBehaviour
                                 saveData.forgetPoints
                             );
 
-                        // Jeżeli nowy klucz ForgetPoints nie istnieje
-                        // na starszym koncie, przyznajemy jednorazowo
-                        // początkowe 10 Punktów Zapomnienia.
-                        if (result.Data == null ||
-                            !result.Data.ContainsKey(
-                                PLAYER_FORGET_POINTS_KEY))
+                        if (result.Data.ContainsKey(
+                            PLAYER_FORGET_POINTS_KEY) == false)
                         {
                             loadedForgetPoints =
                                 STARTING_FORGET_POINTS;
@@ -1355,417 +1022,176 @@ public class PlayFabManager : MonoBehaviour
                         if (saveData.talents != null)
                         {
                             foreach (
-                                TalentLevelSaveData talentData
+                                TalentLevelSaveData talent
                                 in saveData.talents)
                             {
-                                if (talentData == null)
+                                if (talent == null)
                                     continue;
 
                                 if (string.IsNullOrWhiteSpace(
-                                    talentData.talentID))
+                                    talent.talentID))
                                 {
                                     continue;
                                 }
 
-                                int level =
+                                loadedTalentLevels[
+                                    talent.talentID
+                                ] =
                                     Mathf.Max(
                                         0,
-                                        talentData.level
+                                        talent.level
                                     );
-
-                                loadedTalentLevels[
-                                    talentData.talentID
-                                ] = level;
                             }
                         }
 
-                        loadedUnifiedProgress = true;
+                        loadedUnified = true;
                     }
                 }
-                catch (Exception exception)
+                catch (Exception e)
                 {
-                    Debug.LogError(
-                        "[PlayFabManager] Błąd odczytu " +
-                        "TalentProgress: " +
-                        exception.Message
+                    Debug.LogWarning(
+                        "[PlayFabManager] Błąd TalentProgress: " +
+                        e.Message
                     );
                 }
             }
         }
 
-        // =====================================================
-        // 2. STARY SYSTEM - MIGRACJA
-        // =====================================================
-
-        if (!loadedUnifiedProgress)
+        if (!loadedUnified)
         {
             loadedPoints =
-                LoadLegacyTalentPoints(
-                    result
+                ReadIntUserData(
+                    result,
+                    PLAYER_TALENT_POINTS_KEY,
+                    0
                 );
 
             loadedForgetPoints =
-                LoadLegacyForgetPoints(
-                    result
+                ReadIntUserData(
+                    result,
+                    PLAYER_FORGET_POINTS_KEY,
+                    STARTING_FORGET_POINTS
                 );
 
-            LoadLegacyTalentLevels(
-                result
-            );
-
-            // Stary DamageTalentLevel.
-            // Jeżeli nie istnieje już Talent_damage_all,
-            // wykorzystujemy stare dane.
-            if (!loadedTalentLevels.ContainsKey(
-                "damage_all"))
-            {
-                int legacyDamageLevel =
-                    LoadLegacyDamageTalentLevel(
-                        result
-                    );
-
-                if (legacyDamageLevel > 0)
-                {
-                    loadedTalentLevels[
-                        "damage_all"
-                    ] =
-                        legacyDamageLevel;
-                }
-            }
-
-            // Jeżeli konto nie miało TalentPoints,
-            // przyznajemy punkty za zdobyte wcześniej poziomy.
-            bool hadLegacyPoints =
-                HasLegacyTalentPoints(
-                    result
+            int legacyDamage =
+                ReadIntUserData(
+                    result,
+                    PLAYER_DAMAGE_TALENT_LEVEL_KEY,
+                    0
                 );
 
-            if (!hadLegacyPoints)
+            if (legacyDamage > 0)
             {
-                int levelsAlreadyEarned =
-                    Mathf.Max(
-                        0,
-                        PlayerLevel -
-                        startingLevel
-                    );
-
-                loadedPoints =
-                    levelsAlreadyEarned *
-                    TALENT_POINTS_PER_LEVEL;
+                loadedTalentLevels[
+                    "damage_all"
+                ] = legacyDamage;
             }
-
-            Debug.Log(
-                "[PlayFabManager] Wykryto stare dane talentów. " +
-                "Rozpoczynam migrację do TalentProgress."
-            );
-
-            SaveTalentProgressSnapshot(
-                loadedPoints,
-                loadedTalentLevels,
-                loadedForgetPoints,
-                success =>
-                {
-                    FinishTalentProgressLoading(
-                        loadedPoints,
-                        loadedTalentLevels,
-                        loadedForgetPoints
-                    );
-                }
-            );
-
-            return;
         }
 
-        bool needsForgetPointsMigration =
-            result == null ||
-            result.Data == null ||
-            !result.Data.ContainsKey(
-                PLAYER_FORGET_POINTS_KEY
-            );
-
-        if (needsForgetPointsMigration)
-        {
-            // Starsze konta posiadają już TalentProgress, ale nie
-            // mają jeszcze Punktów Zapomnienia. Przyznajemy 10
-            // punktów startowych i od razu zapisujemy je do PlayFab,
-            // aby nie zostały przyznane ponownie przy kolejnym logowaniu.
-            SaveTalentProgressSnapshot(
-                loadedPoints,
-                loadedTalentLevels,
-                loadedForgetPoints,
-                success =>
-                {
-                    FinishTalentProgressLoading(
-                        loadedPoints,
-                        loadedTalentLevels,
-                        loadedForgetPoints
-                    );
-                }
-            );
-
-            return;
-        }
-
-        FinishTalentProgressLoading(
-            loadedPoints,
-            loadedTalentLevels,
-            loadedForgetPoints
-        );
-    }
-
-
-    private void FinishTalentProgressLoading(
-        int points,
-        Dictionary<string, int> levels,
-        int forgetPoints)
-    {
-        TalentPoints =
-            Mathf.Max(
-                0,
-                points
-            );
-
-        ForgetPoints =
-            Mathf.Max(
-                0,
-                forgetPoints
-            );
+        TalentPoints = loadedPoints;
+        ForgetPoints = loadedForgetPoints;
 
         IsTalentPointsLoaded = true;
-
-        IsTalentProgressLoadedInternal = true;
+        IsTalentProgressLoaded = true;
 
         ApplyTalentProgressToManager();
 
-        Debug.Log(
-            "[PlayFabManager] TalentProgress wczytany. " +
-            "Punkty: " +
-            TalentPoints +
-            ", Punkty Zapomnienia: " +
-            ForgetPoints +
-            ", liczba zapisanych talentów: " +
-            loadedTalentLevels.Count
+        /*
+         * Jeżeli konto było stare, zapisujemy nowy snapshot.
+         */
+        if (!loadedUnified && IsLoggedIn)
+        {
+            SaveTalentProgressSnapshot(
+                TalentPoints,
+                loadedTalentLevels,
+                ForgetPoints,
+                null
+            );
+        }
+    }
+
+    private void OnTalentProgressFailed(
+        PlayFabError error)
+    {
+        talentProgressLoadInProgress = false;
+
+        /*
+         * Nie blokujemy gry.
+         */
+        IsTalentPointsLoaded = true;
+        IsTalentProgressLoaded = true;
+
+        Debug.LogWarning(
+            "[PlayFabManager] Nie udało się wczytać talentów: " +
+            GetPlayFabErrorText(error)
         );
     }
 
+    private int ReadIntUserData(
+        GetUserDataResult result,
+        string key,
+        int defaultValue)
+    {
+        if (result == null ||
+            result.Data == null)
+        {
+            return defaultValue;
+        }
+
+        if (!result.Data.TryGetValue(
+            key,
+            out UserDataRecord record))
+        {
+            return defaultValue;
+        }
+
+        if (record == null)
+            return defaultValue;
+
+        if (int.TryParse(
+            record.Value,
+            out int value))
+        {
+            return value;
+        }
+
+        return defaultValue;
+    }
 
     // =========================================================
-    // APPLY DO SKILL TALENT MANAGER
+    // APPLY TALENTS
     // =========================================================
 
     public void ApplyTalentProgressToManager()
     {
-        if (!IsTalentProgressLoadedInternal)
+        if (!IsTalentProgressLoaded)
             return;
 
         if (SkillTalentManager.Instance == null)
-        {
-            Debug.LogWarning(
-                "[PlayFabManager] SkillTalentManager nie istnieje " +
-                "podczas przekazywania TalentProgress."
-            );
-
             return;
-        }
 
         SkillTalentManager.Instance.ApplyTalentProgress(
             loadedTalentLevels
         );
     }
 
-
-    private bool HasLegacyForgetPoints(
-        GetUserDataResult result)
-    {
-        return result != null &&
-               result.Data != null &&
-               result.Data.ContainsKey(
-                   PLAYER_FORGET_POINTS_KEY);
-    }
-
-
-    private int LoadLegacyForgetPoints(
-        GetUserDataResult result)
-    {
-        if (!HasLegacyForgetPoints(result))
-            return STARTING_FORGET_POINTS;
-
-        UserDataRecord record =
-            result.Data[
-                PLAYER_FORGET_POINTS_KEY
-            ];
-
-        if (record == null)
-            return STARTING_FORGET_POINTS;
-
-        if (int.TryParse(
-            record.Value,
-            out int parsedPoints))
-        {
-            return Mathf.Max(
-                0,
-                parsedPoints
-            );
-        }
-
-        return STARTING_FORGET_POINTS;
-    }
-
-
     // =========================================================
-    // STARE TALENTY - LOAD
-    // =========================================================
-
-    private bool HasLegacyTalentPoints(
-        GetUserDataResult result)
-    {
-        return result != null &&
-               result.Data != null &&
-               result.Data.ContainsKey(
-                   PLAYER_TALENT_POINTS_KEY);
-    }
-
-
-    private int LoadLegacyTalentPoints(
-        GetUserDataResult result)
-    {
-        if (!HasLegacyTalentPoints(result))
-            return 0;
-
-        UserDataRecord record =
-            result.Data[
-                PLAYER_TALENT_POINTS_KEY
-            ];
-
-        if (record == null)
-            return 0;
-
-        if (int.TryParse(
-            record.Value,
-            out int parsedPoints))
-        {
-            return Mathf.Max(
-                0,
-                parsedPoints
-            );
-        }
-
-        return 0;
-    }
-
-
-    private int LoadLegacyDamageTalentLevel(
-        GetUserDataResult result)
-    {
-        if (result == null ||
-            result.Data == null ||
-            !result.Data.ContainsKey(
-                PLAYER_DAMAGE_TALENT_LEVEL_KEY))
-        {
-            return 0;
-        }
-
-        UserDataRecord record =
-            result.Data[
-                PLAYER_DAMAGE_TALENT_LEVEL_KEY
-            ];
-
-        if (record == null)
-            return 0;
-
-        if (int.TryParse(
-            record.Value,
-            out int parsedLevel))
-        {
-            return Mathf.Max(
-                0,
-                parsedLevel
-            );
-        }
-
-        return 0;
-    }
-
-
-    private void LoadLegacyTalentLevels(
-        GetUserDataResult result)
-    {
-        if (result == null ||
-            result.Data == null)
-        {
-            return;
-        }
-
-        const string prefix =
-            "Talent_";
-
-        foreach (
-            KeyValuePair<string, UserDataRecord> pair
-            in result.Data)
-        {
-            if (!pair.Key.StartsWith(
-                prefix,
-                StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            UserDataRecord record =
-                pair.Value;
-
-            if (record == null)
-                continue;
-
-            string talentID =
-                pair.Key.Substring(
-                    prefix.Length
-                );
-
-            if (string.IsNullOrWhiteSpace(
-                talentID))
-            {
-                continue;
-            }
-
-            if (int.TryParse(
-                record.Value,
-                out int parsedLevel))
-            {
-                loadedTalentLevels[
-                    talentID
-                ] =
-                    Mathf.Max(
-                        0,
-                        parsedLevel
-                    );
-            }
-        }
-    }
-
-
-    // =========================================================
-    // TALENTY - SAVE CAŁEGO PROGRESU
+    // SAVE TALENT SNAPSHOT
     // =========================================================
 
     private string CreateTalentProgressJson(
-        int points,
+        int talentPoints,
         Dictionary<string, int> levels,
         int forgetPoints)
     {
-        TalentProgressSaveData saveData =
+        TalentProgressSaveData data =
             new TalentProgressSaveData();
 
-        saveData.talentPoints =
-            Mathf.Max(
-                0,
-                points
-            );
+        data.talentPoints =
+            Mathf.Max(0, talentPoints);
 
-        saveData.forgetPoints =
-            Mathf.Max(
-                0,
-                forgetPoints
-            );
+        data.forgetPoints =
+            Mathf.Max(0, forgetPoints);
 
         if (levels != null)
         {
@@ -1773,39 +1199,27 @@ public class PlayFabManager : MonoBehaviour
                 KeyValuePair<string, int> pair
                 in levels)
             {
-                if (string.IsNullOrWhiteSpace(
-                    pair.Key))
-                {
+                if (string.IsNullOrWhiteSpace(pair.Key))
                     continue;
-                }
 
-                saveData.talents.Add(
+                data.talents.Add(
                     new TalentLevelSaveData
                     {
-                        talentID =
-                            pair.Key,
-
-                        level =
-                            Mathf.Max(
-                                0,
-                                pair.Value
-                            )
+                        talentID = pair.Key,
+                        level = Mathf.Max(0, pair.Value)
                     }
                 );
             }
         }
 
-        return JsonUtility.ToJson(
-            saveData
-        );
+        return JsonUtility.ToJson(data);
     }
 
-
     private void SaveTalentProgressSnapshot(
-        int points,
+        int talentPoints,
         Dictionary<string, int> levels,
         int forgetPoints,
-        Action<bool> callback = null)
+        Action<bool> callback)
     {
         if (!IsLoggedIn)
         {
@@ -1813,21 +1227,9 @@ public class PlayFabManager : MonoBehaviour
             return;
         }
 
-        points =
-            Mathf.Max(
-                0,
-                points
-            );
-
-        forgetPoints =
-            Mathf.Max(
-                0,
-                forgetPoints
-            );
-
         string json =
             CreateTalentProgressJson(
-                points,
+                talentPoints,
                 levels,
                 forgetPoints
             );
@@ -1839,17 +1241,9 @@ public class PlayFabManager : MonoBehaviour
                     PLAYER_TALENT_PROGRESS_KEY,
                     json
                 },
-
-                // Zachowujemy stary klucz również podczas
-                // migracji, aby starsze wersje gry nie utraciły
-                // informacji o punktach.
                 {
                     PLAYER_TALENT_POINTS_KEY,
-                    points.ToString()
-                },
-                {
-                    PLAYER_FORGET_POINTS_KEY,
-                    ForgetPoints.ToString()
+                    talentPoints.ToString()
                 },
                 {
                     PLAYER_FORGET_POINTS_KEY,
@@ -1868,9 +1262,8 @@ public class PlayFabManager : MonoBehaviour
             },
             error =>
             {
-                Debug.LogError(
-                    "[PlayFabManager] Nie udało się zapisać " +
-                    "TalentProgress: " +
+                Debug.LogWarning(
+                    "[PlayFabManager] Nie udało się zapisać TalentProgress: " +
                     GetPlayFabErrorText(error)
                 );
 
@@ -1879,9 +1272,8 @@ public class PlayFabManager : MonoBehaviour
         );
     }
 
-
     // =========================================================
-    // ZAKUP TALENTU - ATOMICZNY ZAPIS
+    // SAVE TALENT
     // =========================================================
 
     public void SaveTalentProgress(
@@ -1892,113 +1284,50 @@ public class PlayFabManager : MonoBehaviour
     {
         if (!IsLoggedIn)
         {
-            Debug.LogWarning(
-                "[PlayFabManager] Nie można zapisać talentu - " +
-                "gracz nie jest zalogowany."
-            );
-
             callback?.Invoke(false);
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(
-            talentID))
+        if (string.IsNullOrWhiteSpace(talentID))
         {
-            Debug.LogWarning(
-                "[PlayFabManager] Nie można zapisać talentu - " +
-                "brak talentID."
-            );
-
             callback?.Invoke(false);
             return;
         }
 
-        level =
-            Mathf.Max(
-                0,
-                level
-            );
-
-        newTalentPoints =
-            Mathf.Max(
-                0,
-                newTalentPoints
-            );
-
-        // Kopia istniejących danych.
-        // Dzięki temu talentów, których nie znamy w aktualnej
-        // wersji gry, nie usuniemy przypadkiem z PlayFab.
-        Dictionary<string, int> newLevels =
+        Dictionary<string, int> levels =
             new Dictionary<string, int>(
                 loadedTalentLevels
             );
 
-        newLevels[talentID] =
-            level;
+        levels[talentID] =
+            Mathf.Max(0, level);
 
-        string json =
-            CreateTalentProgressJson(
-                newTalentPoints,
-                newLevels,
-                ForgetPoints
-            );
+        newTalentPoints =
+            Mathf.Max(0, newTalentPoints);
 
-        Dictionary<string, string> data =
-            new Dictionary<string, string>
+        SaveTalentProgressSnapshot(
+            newTalentPoints,
+            levels,
+            ForgetPoints,
+            success =>
             {
+                if (success)
                 {
-                    PLAYER_TALENT_PROGRESS_KEY,
-                    json
-                },
+                    loadedTalentLevels = levels;
 
-                // Zachowujemy również stary klucz.
-                {
-                    PLAYER_TALENT_POINTS_KEY,
-                    newTalentPoints.ToString()
-                },
-                {
-                    PLAYER_FORGET_POINTS_KEY,
-                    ForgetPoints.ToString()
+                    TalentPoints =
+                        newTalentPoints;
+
+                    IsTalentPointsLoaded = true;
+                    IsTalentProgressLoaded = true;
+
+                    ApplyTalentProgressToManager();
                 }
-            };
 
-        PlayFabClientAPI.UpdateUserData(
-            new UpdateUserDataRequest
-            {
-                Data = data
-            },
-            result =>
-            {
-                loadedTalentLevels =
-                    newLevels;
-
-                TalentPoints =
-                    newTalentPoints;
-
-                IsTalentPointsLoaded = true;
-                IsTalentProgressLoadedInternal = true;
-
-                callback?.Invoke(true);
-            },
-            error =>
-            {
-                Debug.LogError(
-                    "[PlayFabManager] Nie udało się zapisać " +
-                    "TalentProgress po zakupie talentu " +
-                    talentID +
-                    ": " +
-                    GetPlayFabErrorText(error)
-                );
-
-                callback?.Invoke(false);
+                callback?.Invoke(success);
             }
         );
     }
-
-
-    // =========================================================
-    // RESET TALENTU - ATOMICZNY ZAPIS
-    // =========================================================
 
     public void SaveTalentResetProgress(
         string talentID,
@@ -2008,93 +1337,55 @@ public class PlayFabManager : MonoBehaviour
     {
         if (!IsLoggedIn)
         {
-            Debug.LogWarning(
-                "[PlayFabManager] Nie można zresetować talentu - " +
-                "gracz nie jest zalogowany."
-            );
-
             callback?.Invoke(false);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(talentID))
         {
-            Debug.LogWarning(
-                "[PlayFabManager] Nie można zresetować talentu - " +
-                "brak talentID."
-            );
-
             callback?.Invoke(false);
             return;
         }
 
-        newTalentPoints = Mathf.Max(0, newTalentPoints);
-        newForgetPoints = Mathf.Max(0, newForgetPoints);
-
-        Dictionary<string, int> newLevels =
-            new Dictionary<string, int>(loadedTalentLevels);
-
-        newLevels[talentID] = 0;
-
-        string json =
-            CreateTalentProgressJson(
-                newTalentPoints,
-                newLevels,
-                newForgetPoints
+        Dictionary<string, int> levels =
+            new Dictionary<string, int>(
+                loadedTalentLevels
             );
 
-        Dictionary<string, string> data =
-            new Dictionary<string, string>
+        levels[talentID] = 0;
+
+        SaveTalentProgressSnapshot(
+            newTalentPoints,
+            levels,
+            newForgetPoints,
+            success =>
             {
+                if (success)
                 {
-                    PLAYER_TALENT_PROGRESS_KEY,
-                    json
-                },
-                {
-                    PLAYER_TALENT_POINTS_KEY,
-                    newTalentPoints.ToString()
-                },
-                {
-                    PLAYER_FORGET_POINTS_KEY,
-                    newForgetPoints.ToString()
+                    loadedTalentLevels = levels;
+
+                    TalentPoints =
+                        Mathf.Max(
+                            0,
+                            newTalentPoints
+                        );
+
+                    ForgetPoints =
+                        Mathf.Max(
+                            0,
+                            newForgetPoints
+                        );
+
+                    IsTalentPointsLoaded = true;
+                    IsTalentProgressLoaded = true;
+
+                    ApplyTalentProgressToManager();
                 }
-            };
 
-        PlayFabClientAPI.UpdateUserData(
-            new UpdateUserDataRequest
-            {
-                Data = data
-            },
-            result =>
-            {
-                loadedTalentLevels = newLevels;
-                TalentPoints = newTalentPoints;
-                ForgetPoints = newForgetPoints;
-
-                IsTalentPointsLoaded = true;
-                IsTalentProgressLoadedInternal = true;
-
-                callback?.Invoke(true);
-            },
-            error =>
-            {
-                Debug.LogError(
-                    "[PlayFabManager] Nie udało się zapisać " +
-                    "resetu talentu " +
-                    talentID +
-                    ": " +
-                    GetPlayFabErrorText(error)
-                );
-
-                callback?.Invoke(false);
+                callback?.Invoke(success);
             }
         );
     }
-
-
-    // =========================================================
-    // KOMPATYBILNOŚĆ - STARY SAVE TALENT LEVEL
-    // =========================================================
 
     public void SaveTalentLevel(
         string talentID,
@@ -2109,16 +1400,17 @@ public class PlayFabManager : MonoBehaviour
         );
     }
 
-
     // =========================================================
-    // KOMPATYBILNOŚĆ - DAMAGE TALENT
+    // OLD DAMAGE TALENT COMPATIBILITY
     // =========================================================
 
     public void LoadDamageTalent()
     {
+        /*
+         * Zachowane dla kompatybilności ze starym kodem.
+         */
         LoadTalentProgress();
     }
-
 
     public void SaveDamageTalentLevel(
         int level,
@@ -2126,18 +1418,14 @@ public class PlayFabManager : MonoBehaviour
     {
         SaveTalentProgress(
             "damage_all",
-            Mathf.Max(
-                0,
-                level
-            ),
+            level,
             TalentPoints,
             callback
         );
     }
 
-
     // =========================================================
-    // TALENTY - PUNKTY
+    // TALENT POINTS
     // =========================================================
 
     public void LoadTalentPoints()
@@ -2145,85 +1433,34 @@ public class PlayFabManager : MonoBehaviour
         LoadTalentProgress();
     }
 
-
-    // =========================================================
-    // ZAPIS PUNKTÓW TALENTÓW
-    // =========================================================
-
     public void SaveTalentPoints(
         int points,
         Action<bool> callback = null)
     {
-        if (!IsLoggedIn)
-        {
-            Debug.LogWarning(
-                "[PlayFabManager] Nie można zapisać punktów " +
-                "talentów - gracz nie jest zalogowany."
-            );
-
-            callback?.Invoke(false);
-            return;
-        }
-
         points =
             Mathf.Max(
                 0,
                 points
             );
 
-        string json =
-            CreateTalentProgressJson(
-                points,
-                loadedTalentLevels,
-                ForgetPoints
-            );
+        TalentPoints = points;
 
-        Dictionary<string, string> data =
-            new Dictionary<string, string>
+        SaveTalentProgressSnapshot(
+            TalentPoints,
+            loadedTalentLevels,
+            ForgetPoints,
+            success =>
             {
+                if (success)
                 {
-                    PLAYER_TALENT_PROGRESS_KEY,
-                    json
-                },
-
-                {
-                    PLAYER_TALENT_POINTS_KEY,
-                    points.ToString()
+                    IsTalentPointsLoaded = true;
+                    IsTalentProgressLoaded = true;
                 }
-            };
 
-        PlayFabClientAPI.UpdateUserData(
-            new UpdateUserDataRequest
-            {
-                Data = data
-            },
-            result =>
-            {
-                TalentPoints =
-                    points;
-
-                IsTalentPointsLoaded = true;
-                IsTalentProgressLoadedInternal = true;
-
-                callback?.Invoke(true);
-            },
-            error =>
-            {
-                Debug.LogError(
-                    "[PlayFabManager] Nie udało się zapisać " +
-                    "punktów talentów: " +
-                    GetPlayFabErrorText(error)
-                );
-
-                callback?.Invoke(false);
+                callback?.Invoke(success);
             }
         );
     }
-
-
-    // =========================================================
-    // DODAWANIE PUNKTÓW TALENTÓW
-    // =========================================================
 
     public void AddTalentPoints(
         int amount,
@@ -2235,93 +1472,45 @@ public class PlayFabManager : MonoBehaviour
             return;
         }
 
-        int newPoints =
-            Mathf.Max(
-                0,
-                TalentPoints + amount
-            );
-
         SaveTalentPoints(
-            newPoints,
+            TalentPoints + amount,
             callback
         );
     }
 
-
-    // =========================================================
-    // WYDAWANIE PUNKTÓW TALENTÓW
-    // =========================================================
-
-    public bool CanSpendTalentPoints(
-        int amount)
+    public bool CanSpendTalentPoints(int amount)
     {
-        if (amount <= 0)
-            return true;
-
-        return TalentPoints >= amount;
+        return amount >= 0 &&
+               TalentPoints >= amount;
     }
-
 
     public bool TrySpendTalentPoints(
         int amount,
         Action<bool> callback = null)
     {
-        if (amount <= 0)
+        if (!CanSpendTalentPoints(amount))
         {
-            callback?.Invoke(true);
-            return true;
-        }
-
-        if (!IsLoggedIn)
-        {
-            Debug.LogWarning(
-                "[PlayFabManager] Nie można wydać punktów " +
-                "talentów - gracz nie jest zalogowany."
-            );
-
             callback?.Invoke(false);
             return false;
         }
-
-        if (TalentPoints < amount)
-        {
-            Debug.Log(
-                "[PlayFabManager] Za mało punktów talentów. " +
-                "Posiadane: " +
-                TalentPoints +
-                ", wymagane: " +
-                amount
-            );
-
-            callback?.Invoke(false);
-            return false;
-        }
-
-        int newPoints =
-            TalentPoints - amount;
 
         SaveTalentPoints(
-            newPoints,
+            TalentPoints - amount,
             callback
         );
 
         return true;
     }
 
-
     // =========================================================
-    // PUNKTY ZAPOMNIENIA
+    // FORGET POINTS
     // =========================================================
 
-    public bool CanSpendForgetPoints(
-        int amount)
+    public bool CanSpendForgetPoints(int amount)
     {
-        if (amount <= 0)
-            return true;
-
-        return ForgetPoints >= amount;
+        return amount >= 0 &&
+               ForgetPoints >= amount;
     }
-
 
     public void AddForgetPoints(
         int amount,
@@ -2333,145 +1522,61 @@ public class PlayFabManager : MonoBehaviour
             return;
         }
 
-        if (!IsLoggedIn)
-        {
-            callback?.Invoke(false);
-            return;
-        }
+        int newValue =
+            ForgetPoints + amount;
 
-        int newForgetPoints =
-            Mathf.Max(
-                0,
-                ForgetPoints + amount
-            );
-
-        string json =
-            CreateTalentProgressJson(
-                TalentPoints,
-                loadedTalentLevels,
-                newForgetPoints
-            );
-
-        Dictionary<string, string> data =
-            new Dictionary<string, string>
+        SaveTalentProgressSnapshot(
+            TalentPoints,
+            loadedTalentLevels,
+            newValue,
+            success =>
             {
-                {
-                    PLAYER_TALENT_PROGRESS_KEY,
-                    json
-                },
-                {
-                    PLAYER_TALENT_POINTS_KEY,
-                    TalentPoints.ToString()
-                },
-                {
-                    PLAYER_FORGET_POINTS_KEY,
-                    newForgetPoints.ToString()
-                }
-            };
+                if (success)
+                    ForgetPoints = newValue;
 
-        PlayFabClientAPI.UpdateUserData(
-            new UpdateUserDataRequest
-            {
-                Data = data
-            },
-            result =>
-            {
-                ForgetPoints = newForgetPoints;
-                callback?.Invoke(true);
-            },
-            error =>
-            {
-                Debug.LogError(
-                    "[PlayFabManager] Nie udało się dodać " +
-                    "Punktów Zapomnienia: " +
-                    GetPlayFabErrorText(error)
-                );
-
-                callback?.Invoke(false);
+                callback?.Invoke(success);
             }
         );
     }
-
 
     public bool TrySpendForgetPoints(
         int amount,
         Action<bool> callback = null)
     {
-        if (amount <= 0)
-        {
-            callback?.Invoke(true);
-            return true;
-        }
-
-        if (!IsLoggedIn ||
-            ForgetPoints < amount)
+        if (!CanSpendForgetPoints(amount))
         {
             callback?.Invoke(false);
             return false;
         }
 
-        int newForgetPoints =
+        int newValue =
             ForgetPoints - amount;
 
-        string json =
-            CreateTalentProgressJson(
-                TalentPoints,
-                loadedTalentLevels,
-                newForgetPoints
-            );
+        SaveTalentProgressSnapshot(
+            TalentPoints,
+            loadedTalentLevels,
+            newValue,
+            success =>
+            {
+                if (success)
+                    ForgetPoints = newValue;
 
-        Dictionary<string, string> data =
-            new Dictionary<string, string>
-            {
-                {
-                    PLAYER_TALENT_PROGRESS_KEY,
-                    json
-                },
-                {
-                    PLAYER_TALENT_POINTS_KEY,
-                    TalentPoints.ToString()
-                },
-                {
-                    PLAYER_FORGET_POINTS_KEY,
-                    newForgetPoints.ToString()
-                }
-            };
-
-        PlayFabClientAPI.UpdateUserData(
-            new UpdateUserDataRequest
-            {
-                Data = data
-            },
-            result =>
-            {
-                ForgetPoints = newForgetPoints;
-                callback?.Invoke(true);
-            },
-            error =>
-            {
-                Debug.LogError(
-                    "[PlayFabManager] Nie udało się wydać " +
-                    "Punktów Zapomnienia: " +
-                    GetPlayFabErrorText(error)
-                );
-
-                callback?.Invoke(false);
+                callback?.Invoke(success);
             }
         );
 
         return true;
     }
 
-
     // =========================================================
-    // PROGRESJA - LOAD
+    // PROGRESSION LOAD
     // =========================================================
 
     public void LoadPlayerProgression()
     {
         if (!IsLoggedIn)
         {
-            IsProgressionLoaded = false;
+            IsProgressionLoaded = true;
             return;
         }
 
@@ -2479,127 +1584,130 @@ public class PlayFabManager : MonoBehaviour
 
         PlayFabClientAPI.GetUserData(
             new GetUserDataRequest(),
-            OnProgressionDataReceived,
-            OnProgressionDataFailed
+            OnProgressionReceived,
+            OnProgressionFailed
         );
     }
 
-
-    private void OnProgressionDataReceived(
+    private void OnProgressionReceived(
         GetUserDataResult result)
     {
-        double loadedXP = 0.0;
-
-        int loadedLevel =
-            Mathf.Max(
-                1,
-                startingLevel
-            );
-
-        bool hasXP = false;
-        bool hasLevel = false;
-
-        if (result != null &&
-            result.Data != null)
-        {
-            if (result.Data.ContainsKey(
-                PLAYER_XP_KEY))
-            {
-                string xpValue =
-                    result.Data[
-                        PLAYER_XP_KEY
-                    ].Value;
-
-                if (double.TryParse(
-                    xpValue,
-                    NumberStyles.Float,
-                    CultureInfo.InvariantCulture,
-                    out double parsedXP))
-                {
-                    if (!double.IsNaN(parsedXP) &&
-                        !double.IsInfinity(parsedXP) &&
-                        parsedXP >= 0.0)
-                    {
-                        loadedXP =
-                            parsedXP;
-
-                        hasXP = true;
-                    }
-                }
-            }
-
-            if (result.Data.ContainsKey(
-                PLAYER_LEVEL_KEY))
-            {
-                string levelValue =
-                    result.Data[
-                        PLAYER_LEVEL_KEY
-                    ].Value;
-
-                if (int.TryParse(
-                    levelValue,
-                    out int parsedLevel))
-                {
-                    loadedLevel =
-                        Mathf.Clamp(
-                            parsedLevel,
-                            1,
-                            maximumLevel
-                        );
-
-                    hasLevel = true;
-                }
-            }
-        }
-
         PlayerXP =
-            loadedXP;
+            ReadDoubleUserData(
+                result,
+                PLAYER_XP_KEY,
+                0.0
+            );
 
         PlayerLevel =
             Mathf.Clamp(
-                loadedLevel,
+                ReadIntUserData(
+                    result,
+                    PLAYER_LEVEL_KEY,
+                    startingLevel
+                ),
                 1,
                 maximumLevel
             );
+
+        bool hasXP =
+            HasUserDataKey(
+                result,
+                PLAYER_XP_KEY
+            );
+
+        bool hasLevel =
+            HasUserDataKey(
+                result,
+                PLAYER_LEVEL_KEY
+            );
+
+        IsProgressionLoaded = true;
 
         if (!hasXP || !hasLevel)
         {
             SaveInitialProgressionData();
         }
-        else
-        {
-            IsProgressionLoaded = true;
 
-            // Dopiero teraz mamy pewny PlayerLevel,
-            // więc możemy bezpiecznie migrować stare
-            // punkty talentów.
-            LoadTalentProgress();
-        }
-    }
-
-
-    private void OnProgressionDataFailed(
-        PlayFabError error)
-    {
-        PlayerXP = 0.0;
-
-        PlayerLevel =
-            Mathf.Max(
-                1,
-                startingLevel
-            );
-
-        IsProgressionLoaded = false;
-
-        Debug.LogWarning(
-            "[PlayFabManager] Nie udało się wczytać progresji: " +
-            GetPlayFabErrorText(error)
-        );
-
-        // Nadal próbujemy wczytać talenty.
         LoadTalentProgress();
     }
 
+    private void OnProgressionFailed(
+        PlayFabError error)
+    {
+        /*
+         * Najważniejsze:
+         *
+         * NIE:
+         *
+         * IsProgressionLoaded = false
+         *
+         * bo wtedy UI może wisieć.
+         */
+        IsProgressionLoaded = true;
+
+        PlayerXP = 0.0;
+
+        PlayerLevel =
+            Mathf.Clamp(
+                startingLevel,
+                1,
+                maximumLevel
+            );
+
+        Debug.LogWarning(
+            "[PlayFabManager] Nie udało się pobrać progresji: " +
+            GetPlayFabErrorText(error)
+        );
+
+        LoadTalentProgress();
+    }
+
+    private bool HasUserDataKey(
+        GetUserDataResult result,
+        string key)
+    {
+        return result != null &&
+               result.Data != null &&
+               result.Data.ContainsKey(key);
+    }
+
+    private double ReadDoubleUserData(
+        GetUserDataResult result,
+        string key,
+        double defaultValue)
+    {
+        if (result == null ||
+            result.Data == null ||
+            !result.Data.ContainsKey(key))
+        {
+            return defaultValue;
+        }
+
+        UserDataRecord record =
+            result.Data[key];
+
+        if (record == null)
+            return defaultValue;
+
+        if (!double.TryParse(
+            record.Value,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out double value))
+        {
+            return defaultValue;
+        }
+
+        if (double.IsNaN(value) ||
+            double.IsInfinity(value) ||
+            value < 0)
+        {
+            return defaultValue;
+        }
+
+        return value;
+    }
 
     private void SaveInitialProgressionData()
     {
@@ -2620,11 +1728,8 @@ public class PlayFabManager : MonoBehaviour
             {
                 {
                     PLAYER_XP_KEY,
-                    PlayerXP.ToString(
-                        CultureInfo.InvariantCulture
-                    )
+                    "0"
                 },
-
                 {
                     PLAYER_LEVEL_KEY,
                     PlayerLevel.ToString()
@@ -2639,27 +1744,25 @@ public class PlayFabManager : MonoBehaviour
             result =>
             {
                 IsProgressionLoaded = true;
-
-                LoadTalentProgress();
             },
             error =>
             {
-                IsProgressionLoaded = false;
+                /*
+                 * Nadal pozostaje true.
+                 */
+                IsProgressionLoaded = true;
 
                 Debug.LogWarning(
-                    "[PlayFabManager] Nie udało się zapisać " +
+                    "[PlayFabManager] Nie udało się utworzyć " +
                     "początkowej progresji: " +
                     GetPlayFabErrorText(error)
                 );
-
-                LoadTalentProgress();
             }
         );
     }
 
-
     // =========================================================
-    // XP REQUIRED
+    // XP CALCULATIONS
     // =========================================================
 
     public double GetXPRequiredForNextLevel()
@@ -2671,7 +1774,6 @@ public class PlayFabManager : MonoBehaviour
             PlayerLevel
         );
     }
-
 
     public double GetXPRequiredForLevel(
         int level)
@@ -2686,63 +1788,18 @@ public class PlayFabManager : MonoBehaviour
         if (level >= maximumLevel)
             return 0.0;
 
-        if (baseXPToLevel2 <= 0.0)
+        if (baseXPToLevel2 <= 0)
             return 0.0;
 
-        if (xpMultiplier <= 0.0)
+        if (xpMultiplier <= 0)
             return baseXPToLevel2;
-
-        int exponent =
-            level - 1;
 
         return baseXPToLevel2 *
                Math.Pow(
                    xpMultiplier,
-                   exponent
+                   level - 1
                );
     }
-
-
-    public double GetXPIntoCurrentLevel()
-    {
-        if (PlayerLevel >= maximumLevel)
-            return 0.0;
-
-        double xpBeforeCurrentLevel =
-            GetTotalXPRequiredForLevel(
-                PlayerLevel
-            );
-
-        return Math.Max(
-            0.0,
-            PlayerXP -
-            xpBeforeCurrentLevel
-        );
-    }
-
-
-    public double GetXPRemainingToNextLevel()
-    {
-        if (PlayerLevel >= maximumLevel)
-            return 0.0;
-
-        double currentLevelStartXP =
-            GetTotalXPRequiredForLevel(
-                PlayerLevel
-            );
-
-        double nextLevelStartXP =
-            GetTotalXPRequiredForLevel(
-                PlayerLevel + 1
-            );
-
-        return Math.Max(
-            0.0,
-            nextLevelStartXP -
-            PlayerXP
-        );
-    }
-
 
     private double GetTotalXPRequiredForLevel(
         int level)
@@ -2750,343 +1807,53 @@ public class PlayFabManager : MonoBehaviour
         if (level <= 1)
             return 0.0;
 
-        double totalXP = 0.0;
+        double total = 0.0;
 
         for (int i = 1; i < level; i++)
         {
-            totalXP +=
+            total +=
                 GetXPRequiredForLevel(i);
         }
 
-        return totalXP;
+        return total;
     }
 
-
-    // =========================================================
-    // DODAWANIE XP PO GRZE
-    // =========================================================
-
-    public void AddGameOverXP(
-        double damageDealt,
-        Action<XPResult> callback = null)
+    public double GetXPIntoCurrentLevel()
     {
-        if (!IsLoggedIn)
-        {
-            callback?.Invoke(
-                new XPResult
-                {
-                    success = false
-                }
-            );
+        if (PlayerLevel >= maximumLevel)
+            return 0.0;
 
-            return;
-        }
-
-        if (double.IsNaN(damageDealt) ||
-            double.IsInfinity(damageDealt) ||
-            damageDealt < 0.0)
-        {
-            damageDealt = 0.0;
-        }
-
-        PlayFabClientAPI.GetUserData(
-            new GetUserDataRequest(),
-            result =>
-            {
-                ProcessGameOverXP(
-                    result,
-                    damageDealt,
-                    callback
-                );
-            },
-            error =>
-            {
-                callback?.Invoke(
-                    new XPResult
-                    {
-                        success = false
-                    }
-                );
-            }
+        return Math.Max(
+            0.0,
+            PlayerXP -
+            GetTotalXPRequiredForLevel(PlayerLevel)
         );
     }
 
-
-    private void ProcessGameOverXP(
-        GetUserDataResult result,
-        double damageDealt,
-        Action<XPResult> callback)
+    public double GetXPRemainingToNextLevel()
     {
-        double currentXP = 0.0;
+        if (PlayerLevel >= maximumLevel)
+            return 0.0;
 
-        int currentLevel =
-            Mathf.Clamp(
-                startingLevel,
-                1,
-                maximumLevel
+        double current =
+            GetTotalXPRequiredForLevel(
+                PlayerLevel
             );
 
-        if (result != null &&
-            result.Data != null &&
-            result.Data.ContainsKey(
-                PLAYER_XP_KEY))
-        {
-            string xpValue =
-                result.Data[
-                    PLAYER_XP_KEY
-                ].Value;
-
-            if (double.TryParse(
-                xpValue,
-                NumberStyles.Float,
-                CultureInfo.InvariantCulture,
-                out double parsedXP))
-            {
-                if (!double.IsNaN(parsedXP) &&
-                    !double.IsInfinity(parsedXP) &&
-                    parsedXP >= 0.0)
-                {
-                    currentXP =
-                        parsedXP;
-                }
-            }
-        }
-
-        if (result != null &&
-            result.Data != null &&
-            result.Data.ContainsKey(
-                PLAYER_LEVEL_KEY))
-        {
-            string levelValue =
-                result.Data[
-                    PLAYER_LEVEL_KEY
-                ].Value;
-
-            if (int.TryParse(
-                levelValue,
-                out int parsedLevel))
-            {
-                currentLevel =
-                    Mathf.Clamp(
-                        parsedLevel,
-                        1,
-                        maximumLevel
-                    );
-            }
-        }
-
-        double oldXP =
-            currentXP;
-
-        int oldLevel =
-            currentLevel;
-
-        currentXP +=
-            damageDealt;
-
-        while (currentLevel < maximumLevel)
-        {
-            double requiredTotalXP =
-                GetTotalXPRequiredForLevel(
-                    currentLevel + 1
-                );
-
-            if (currentXP < requiredTotalXP)
-                break;
-
-            currentLevel++;
-        }
-
-        if (currentLevel >= maximumLevel)
-            currentLevel = maximumLevel;
-
-        int levelsGained =
-            Mathf.Max(
-                0,
-                currentLevel -
-                oldLevel
+        double next =
+            GetTotalXPRequiredForLevel(
+                PlayerLevel + 1
             );
 
-        int talentPointsGained =
-            levelsGained *
-            TALENT_POINTS_PER_LEVEL;
-
-        int forgetPointsGained =
-            levelsGained *
-            FORGET_POINTS_PER_PLAYER_LEVEL;
-
-        int newTalentPoints =
-            Mathf.Max(
-                0,
-                TalentPoints +
-                talentPointsGained
-            );
-
-        int newForgetPoints =
-            Mathf.Max(
-                0,
-                ForgetPoints +
-                forgetPointsGained
-            );
-
-        TalentPoints =
-            newTalentPoints;
-
-        ForgetPoints =
-            newForgetPoints;
-
-        PlayerXP =
-            currentXP;
-
-        PlayerLevel =
-            currentLevel;
-
-        IsProgressionLoaded = true;
-
-        // =====================================================
-        // Aktualizujemy lokalny snapshot talentów.
-        // =====================================================
-
-        Dictionary<string, int> talentSnapshot =
-            new Dictionary<string, int>(
-                loadedTalentLevels
-            );
-
-        string talentProgressJson =
-            CreateTalentProgressJson(
-                newTalentPoints,
-                talentSnapshot,
-                newForgetPoints
-            );
-
-        Dictionary<string, string> data =
-            new Dictionary<string, string>
-            {
-                {
-                    PLAYER_XP_KEY,
-                    currentXP.ToString(
-                        CultureInfo.InvariantCulture
-                    )
-                },
-
-                {
-                    PLAYER_LEVEL_KEY,
-                    currentLevel.ToString()
-                },
-
-                {
-                    PLAYER_TALENT_POINTS_KEY,
-                    newTalentPoints.ToString()
-                },
-
-                {
-                    PLAYER_FORGET_POINTS_KEY,
-                    newForgetPoints.ToString()
-                },
-
-                {
-                    PLAYER_TALENT_PROGRESS_KEY,
-                    talentProgressJson
-                }
-            };
-
-        PlayFabClientAPI.UpdateUserData(
-            new UpdateUserDataRequest
-            {
-                Data = data
-            },
-            saveResult =>
-            {
-                IsTalentPointsLoaded = true;
-                IsTalentProgressLoadedInternal = true;
-
-                callback?.Invoke(
-                    new XPResult
-                    {
-                        success = true,
-
-                        xpGained =
-                            damageDealt,
-
-                        oldXP =
-                            oldXP,
-
-                        newXP =
-                            currentXP,
-
-                        oldLevel =
-                            oldLevel,
-
-                        newLevel =
-                            currentLevel,
-
-                        levelsGained =
-                            currentLevel -
-                            oldLevel
-                    }
-                );
-            },
-            error =>
-            {
-                callback?.Invoke(
-                    new XPResult
-                    {
-                        success = false,
-
-                        xpGained =
-                            damageDealt,
-
-                        oldXP =
-                            oldXP,
-
-                        newXP =
-                            currentXP,
-
-                        oldLevel =
-                            oldLevel,
-
-                        newLevel =
-                            currentLevel,
-
-                        levelsGained =
-                            currentLevel -
-                            oldLevel
-                    }
-                );
-            }
+        return Math.Max(
+            0.0,
+            next - PlayerXP
         );
     }
 
-
-    public double GetPlayerXP()
-    {
-        return PlayerXP;
-    }
-
-
-    public int GetPlayerLevel()
-    {
-        return PlayerLevel;
-    }
-
-
-    public int GetMaximumLevel()
-    {
-        return maximumLevel;
-    }
-
-
-    public double GetBaseXPToLevel2()
-    {
-        return baseXPToLevel2;
-    }
-
-
-    public double GetXPMultiplier()
-    {
-        return xpMultiplier;
-    }
-
+    // =========================================================
+    // XP RESULT
+    // =========================================================
 
     [Serializable]
     public class XPResult
@@ -3100,9 +1867,156 @@ public class PlayFabManager : MonoBehaviour
         public int levelsGained;
     }
 
+    // =========================================================
+    // ADD XP
+    // =========================================================
+
+    public void AddGameOverXP(
+        double damageDealt,
+        Action<XPResult> callback = null)
+    {
+        if (double.IsNaN(damageDealt) ||
+            double.IsInfinity(damageDealt) ||
+            damageDealt < 0)
+        {
+            damageDealt = 0;
+        }
+
+        /*
+         * Jeżeli Game Over już czeka,
+         * dokładamy XP do tego samego lokalnego
+         * zapisu.
+         *
+         * Dzięki temu SaveGameOverStats i
+         * AddGameOverXP nie wykonują dwóch
+         * konkurencyjnych UpdateUserData.
+         */
+        if (pendingGameOverStats)
+        {
+            pendingXP += damageDealt;
+
+            PersistPendingData();
+
+            XPResult queuedResult =
+                CalculateLocalXPResult(
+                    damageDealt
+                );
+
+            queuedResult.success = true;
+
+            callback?.Invoke(
+                queuedResult
+            );
+
+            TryFlushPendingData();
+
+            return;
+        }
+
+        /*
+         * Brak Game Over - trzymamy XP osobno.
+         */
+        pendingXP += damageDealt;
+
+        PersistPendingXP();
+
+        XPResult result =
+            CalculateLocalXPResult(
+                damageDealt
+            );
+
+        result.success = true;
+
+        callback?.Invoke(result);
+
+        TryFlushPendingData();
+    }
+
+    private XPResult CalculateLocalXPResult(
+        double xpGained)
+    {
+        double oldXP = PlayerXP;
+        int oldLevel = PlayerLevel;
+
+        double newXP =
+            PlayerXP + xpGained;
+
+        int newLevel =
+            CalculateLevelFromXP(
+                newXP
+            );
+
+        int levels =
+            Mathf.Max(
+                0,
+                newLevel - oldLevel
+            );
+
+        return new XPResult
+        {
+            success = true,
+            xpGained = xpGained,
+            oldXP = oldXP,
+            newXP = newXP,
+            oldLevel = oldLevel,
+            newLevel = newLevel,
+            levelsGained = levels
+        };
+    }
+
+    private int CalculateLevelFromXP(
+        double xp)
+    {
+        int level =
+            Mathf.Clamp(
+                PlayerLevel,
+                1,
+                maximumLevel
+            );
+
+        while (level < maximumLevel)
+        {
+            double required =
+                GetTotalXPRequiredForLevel(
+                    level + 1
+                );
+
+            if (xp < required)
+                break;
+
+            level++;
+        }
+
+        return level;
+    }
+
+    public double GetPlayerXP()
+    {
+        return PlayerXP;
+    }
+
+    public int GetPlayerLevel()
+    {
+        return PlayerLevel;
+    }
+
+    public int GetMaximumLevel()
+    {
+        return maximumLevel;
+    }
+
+    public double GetBaseXPToLevel2()
+    {
+        return baseXPToLevel2;
+    }
+
+    public double GetXPMultiplier()
+    {
+        return xpMultiplier;
+    }
 
     // =========================================================
-    // GAME ACCESS UI
+    // GAME ACCESS
     // =========================================================
 
     public void RegisterGameAccessUI(
@@ -3117,7 +2031,6 @@ public class PlayFabManager : MonoBehaviour
             ApplyGameAccessToUI();
     }
 
-
     public void UnregisterGameAccessUI(
         GameAccessBlockUI ui)
     {
@@ -3125,13 +2038,12 @@ public class PlayFabManager : MonoBehaviour
             gameAccessUI = null;
     }
 
-
     private void CheckGameAccess()
     {
         if (!IsLoggedIn)
         {
             GameAccessChecked = true;
-            IsGameEnabled = false;
+            IsGameEnabled = true;
 
             ApplyGameAccessToUI();
 
@@ -3147,69 +2059,66 @@ public class PlayFabManager : MonoBehaviour
                         GAME_ENABLED_KEY
                     }
             },
-            OnGameAccessReceived,
-            OnGameAccessCheckFailed
+            result =>
+            {
+                GameAccessChecked = true;
+
+                bool enabled = true;
+
+                if (result != null &&
+                    result.Data != null &&
+                    result.Data.TryGetValue(
+                        GAME_ENABLED_KEY,
+                        out string value))
+                {
+                    bool parsed;
+
+                    if (bool.TryParse(
+                        value,
+                        out parsed))
+                    {
+                        enabled = parsed;
+                    }
+                }
+
+                IsGameEnabled = enabled;
+
+                ApplyGameAccessToUI();
+            },
+            error =>
+            {
+                /*
+                 * Błąd sieci NIE oznacza:
+                 *
+                 * "gra wyłączona".
+                 *
+                 * Gra działa normalnie.
+                 */
+                GameAccessChecked = true;
+                IsGameEnabled = true;
+
+                Debug.LogWarning(
+                    "[PlayFabManager] Nie udało się sprawdzić " +
+                    "GameEnabled. Gra pozostaje dostępna."
+                );
+
+                ApplyGameAccessToUI();
+            }
         );
     }
-
-
-    private void OnGameAccessReceived(
-        GetTitleDataResult result)
-    {
-        GameAccessChecked = true;
-
-        if (result == null ||
-            result.Data == null ||
-            !result.Data.ContainsKey(
-                GAME_ENABLED_KEY))
-        {
-            IsGameEnabled = false;
-
-            ApplyGameAccessToUI();
-
-            return;
-        }
-
-        string value =
-            result.Data[
-                GAME_ENABLED_KEY
-            ];
-
-        bool enabled;
-
-        if (!bool.TryParse(
-            value,
-            out enabled))
-        {
-            IsGameEnabled = false;
-
-            ApplyGameAccessToUI();
-
-            return;
-        }
-
-        IsGameEnabled =
-            enabled;
-
-        ApplyGameAccessToUI();
-    }
-
-
-    private void OnGameAccessCheckFailed(
-        PlayFabError error)
-    {
-        GameAccessChecked = true;
-        IsGameEnabled = false;
-
-        ApplyGameAccessToUI();
-    }
-
 
     private void ApplyGameAccessToUI()
     {
         if (gameAccessUI == null)
             return;
 
+        /*
+         * Ta metoda korzysta z istniejącego
+         * GameAccessBlockUI.
+         *
+         * Jeżeli gra jest włączona, UI powinno
+         * zostać ukryte.
+         */
         if (IsGameEnabled)
         {
             gameAccessUI.Hide();
@@ -3222,40 +2131,27 @@ public class PlayFabManager : MonoBehaviour
         }
     }
 
-
     // =========================================================
-    // GAME OVER
+    // GAME SESSION
     // =========================================================
 
     public void BeginNewGameSession()
     {
-        if (pendingGameOverStats)
-        {
-            Debug.LogWarning(
-                "[PlayFabManager] Istnieje niezapisany Game Over. " +
-                "Pozostawiam go do ponowienia."
-            );
-            return;
-        }
+        /*
+         * NIE kasujemy pending Game Over.
+         *
+         * Jeżeli poprzednia gra nie została wysłana,
+         * musi zostać wysłana później.
+         */
 
-        gameOverStatsSaved = false;
-        gameOverSaveInProgress = false;
-        pendingGameOverStatisticsUpdated = false;
-        pendingGameOverStatsCallback = null;
-
-        pendingEnemiesKilled = 0;
-        pendingDamageDealt = 0.0;
-        pendingHighestWave = 0;
-        pendingGoldEarned = 0;
-        pendingGameDuration = 0;
-        pendingSkillsPurchased = 0;
-        pendingUpgradesPurchased = 0;
-
-        pendingBuildSkills = "";
-        pendingBuildUpgrades = "";
-        pendingBuildSummary = "";
+        Debug.Log(
+            "[PlayFabManager] Rozpoczęto nową sesję gry."
+        );
     }
 
+    // =========================================================
+    // GAME OVER
+    // =========================================================
 
     public void SaveGameOverStats(
         int enemiesKilled,
@@ -3267,24 +2163,47 @@ public class PlayFabManager : MonoBehaviour
         int upgradesPurchased,
         Action<bool> callback = null)
     {
-        enemiesKilled = Mathf.Max(0, enemiesKilled);
-        highestWave = Mathf.Max(0, highestWave);
-        goldEarned = Mathf.Max(0, goldEarned);
-        gameDuration = Mathf.Max(0, gameDuration);
-        skillsPurchased = Mathf.Max(0, skillsPurchased);
-        upgradesPurchased = Mathf.Max(0, upgradesPurchased);
+        enemiesKilled =
+            Mathf.Max(
+                0,
+                enemiesKilled
+            );
+
+        highestWave =
+            Mathf.Max(
+                0,
+                highestWave
+            );
+
+        goldEarned =
+            Mathf.Max(
+                0,
+                goldEarned
+            );
+
+        gameDuration =
+            Mathf.Max(
+                0,
+                gameDuration
+            );
+
+        skillsPurchased =
+            Mathf.Max(
+                0,
+                skillsPurchased
+            );
+
+        upgradesPurchased =
+            Mathf.Max(
+                0,
+                upgradesPurchased
+            );
 
         if (double.IsNaN(damageDealt) ||
             double.IsInfinity(damageDealt) ||
-            damageDealt < 0.0)
+            damageDealt < 0)
         {
-            damageDealt = 0.0;
-        }
-
-        if (gameOverStatsSaved)
-        {
-            callback?.Invoke(true);
-            return;
+            damageDealt = 0;
         }
 
         string buildSkills = "";
@@ -3293,154 +2212,208 @@ public class PlayFabManager : MonoBehaviour
 
         if (GameStatsManager.Instance != null)
         {
-            buildSkills = GameStatsManager.Instance.GetPurchasedSkillsSummary();
-            buildUpgrades = GameStatsManager.Instance.GetPurchasedUpgradesSummary();
-            buildSummary = GameStatsManager.Instance.GetBuildSummary();
+            buildSkills =
+                GameStatsManager.Instance
+                    .GetPurchasedSkillsSummary();
+
+            buildUpgrades =
+                GameStatsManager.Instance
+                    .GetPurchasedUpgradesSummary();
+
+            buildSummary =
+                GameStatsManager.Instance
+                    .GetBuildSummary();
         }
 
+        /*
+         * Jeżeli identyczny Game Over już czeka,
+         * nie dodajemy go ponownie.
+         */
         if (pendingGameOverStats)
         {
-            bool samePendingGame =
+            bool same =
                 pendingEnemiesKilled == enemiesKilled &&
-                Math.Abs(pendingDamageDealt - damageDealt) < 0.000001 &&
+                Math.Abs(
+                    pendingDamageDealt -
+                    damageDealt
+                ) < 0.000001 &&
                 pendingHighestWave == highestWave &&
                 pendingGoldEarned == goldEarned &&
                 pendingGameDuration == gameDuration &&
                 pendingSkillsPurchased == skillsPurchased &&
                 pendingUpgradesPurchased == upgradesPurchased;
 
-            if (!samePendingGame)
+            if (same)
             {
-                Debug.LogWarning(
-                    "[PlayFabManager] Poprzedni Game Over nadal oczekuje na zapis. " +
-                    "Nie nadpisuję go."
-                );
-                callback?.Invoke(false);
+                /*
+                 * Najważniejsze:
+                 *
+                 * menu NIE czeka na PlayFab.
+                 */
+                callback?.Invoke(true);
+
+                TryFlushPendingData();
+
                 return;
             }
 
-            if (callback != null)
-                pendingGameOverStatsCallback = callback;
-
-            if (!gameOverSaveInProgress)
-                SavePendingGameOverStats();
-
-            return;
-        }
-
-        pendingGameOverStats = true;
-        pendingGameOverStatsCallback = callback;
-
-        pendingEnemiesKilled = enemiesKilled;
-        pendingDamageDealt = damageDealt;
-        pendingHighestWave = highestWave;
-        pendingGoldEarned = goldEarned;
-        pendingGameDuration = gameDuration;
-        pendingSkillsPurchased = skillsPurchased;
-        pendingUpgradesPurchased = upgradesPurchased;
-
-        pendingBuildSkills = buildSkills ?? "";
-        pendingBuildUpgrades = buildUpgrades ?? "";
-        pendingBuildSummary = buildSummary ?? "";
-        pendingGameOverStatisticsUpdated = false;
-
-        PersistPendingGameOverStats();
-        SavePendingGameOverStats();
-    }
-
-
-    // =========================================================
-    // SAVE PENDING GAME OVER
-    // =========================================================
-
-    private void SavePendingGameOverStats()
-    {
-        if (!pendingGameOverStats ||
-            gameOverSaveInProgress ||
-            !IsLoggedIn)
-        {
-            return;
-        }
-
-        gameOverSaveInProgress = true;
-
-        SendGameOverStats(
-            pendingEnemiesKilled,
-            pendingDamageDealt,
-            pendingHighestWave,
-            pendingGoldEarned,
-            pendingGameDuration,
-            pendingSkillsPurchased,
-            pendingUpgradesPurchased,
-            pendingBuildSkills,
-            pendingBuildUpgrades,
-            pendingBuildSummary,
-            OnPendingGameOverFinished
-        );
-    }
-
-
-    private void OnPendingGameOverFinished(bool success)
-    {
-        gameOverSaveInProgress = false;
-
-        Action<bool> callback = pendingGameOverStatsCallback;
-
-        if (success)
-        {
-            gameOverStatsSaved = true;
-            ClearPendingGameOverStats();
-
-            Debug.Log(
-                "[PlayFabManager] Game Over został w całości zapisany."
-            );
-
-            pendingGameOverStatsCallback = null;
-        }
-        else
-        {
-            gameOverStatsSaved = false;
-            PersistPendingGameOverStats();
-
             Debug.LogWarning(
-                "[PlayFabManager] Game Over nie został jeszcze zapisany. " +
-                "PENDING pozostaje lokalnie."
+                "[PlayFabManager] W kolejce znajduje się " +
+                "inny Game Over. Nie nadpisuję danych."
             );
-        }
 
-        callback?.Invoke(success);
-    }
-
-
-    private void SendGameOverStats(
-        int enemiesKilled,
-        double damageDealt,
-        int highestWave,
-        int goldEarned,
-        int gameDuration,
-        int skillsPurchased,
-        int upgradesPurchased,
-        string buildSkills,
-        string buildUpgrades,
-        string buildSummary,
-        Action<bool> callback = null)
-    {
-        if (!IsLoggedIn)
-        {
             callback?.Invoke(false);
             return;
         }
 
-        if (pendingGameOverStatisticsUpdated)
+        pendingGameOverStats = true;
+
+        pendingEnemiesKilled =
+            enemiesKilled;
+
+        pendingDamageDealt =
+            damageDealt;
+
+        pendingHighestWave =
+            highestWave;
+
+        pendingGoldEarned =
+            goldEarned;
+
+        pendingGameDuration =
+            gameDuration;
+
+        pendingSkillsPurchased =
+            skillsPurchased;
+
+        pendingUpgradesPurchased =
+            upgradesPurchased;
+
+        pendingBuildSkills =
+            buildSkills ?? "";
+
+        pendingBuildUpgrades =
+            buildUpgrades ?? "";
+
+        pendingBuildSummary =
+            buildSummary ?? "";
+
+        pendingGameOverStatisticsUpdated = false;
+        pendingGameOverUserDataUpdated = false;
+
+        PersistPendingData();
+
+        /*
+         * OD RAZU pozwalamy GameOverUI przejść dalej.
+         *
+         * PlayFab zapisuje się w tle.
+         */
+        callback?.Invoke(true);
+
+        TryFlushPendingData();
+    }
+
+    // =========================================================
+    // FLUSH
+    // =========================================================
+
+    private void TryFlushPendingData()
+    {
+        if (!IsLoggedIn)
+            return;
+
+        if (gameOverSaveInProgress)
+            return;
+
+        if (pendingGameOverStats)
         {
-            SaveGameOverUserData(
-                highestWave,
-                damageDealt,
-                buildSkills,
-                buildUpgrades,
-                buildSummary,
-                callback
+            gameOverSaveInProgress = true;
+
+            FlushGameOver(
+                () =>
+                {
+                    gameOverSaveInProgress = false;
+
+                    TryFlushPendingData();
+                }
             );
+
+            return;
+        }
+
+        if (pendingXP > 0.0)
+        {
+            gameOverSaveInProgress = true;
+
+            FlushXP(
+                () =>
+                {
+                    gameOverSaveInProgress = false;
+
+                    TryFlushPendingData();
+                }
+            );
+        }
+    }
+
+    // =========================================================
+    // FLUSH GAME OVER
+    // =========================================================
+
+    private void FlushGameOver(
+        Action finished)
+    {
+        if (!IsLoggedIn)
+        {
+            finished?.Invoke();
+            return;
+        }
+
+        if (!pendingGameOverStatisticsUpdated)
+        {
+            UpdateGameOverStatistics(
+                success =>
+                {
+                    if (!success)
+                    {
+                        /*
+                         * Nie kasujemy kolejki.
+                         *
+                         * Spróbujemy przy kolejnym
+                         * logowaniu / powrocie internetu.
+                         */
+                        finished?.Invoke();
+                        return;
+                    }
+
+                    pendingGameOverStatisticsUpdated = true;
+
+                    PersistPendingData();
+
+                    FlushGameOverUserData(
+                        finished
+                    );
+                }
+            );
+
+            return;
+        }
+
+        FlushGameOverUserData(
+            finished
+        );
+    }
+
+    // =========================================================
+    // UPDATE STATISTICS
+    // =========================================================
+
+    private void UpdateGameOverStatistics(
+        Action<bool> callback)
+    {
+        if (!IsLoggedIn)
+        {
+            callback?.Invoke(false);
             return;
         }
 
@@ -3448,368 +2421,253 @@ public class PlayFabManager : MonoBehaviour
             new GetPlayerStatisticsRequest(),
             result =>
             {
-                int previousHighestWave = 0;
-                int previousGamesPlayed = 0;
-                int previousTotalEnemiesKilled = 0;
-                int previousTotalGoldEarned = 0;
-                int previousTotalGameTime = 0;
-                int previousTotalSkillsPurchased = 0;
-                int previousTotalUpgradesPurchased = 0;
+                int highestWave = 0;
+                int gamesPlayed = 0;
+                int totalEnemiesKilled = 0;
+                int totalGoldEarned = 0;
+                int totalGameTime = 0;
+                int totalSkillsPurchased = 0;
+                int totalUpgradesPurchased = 0;
 
-                if (result != null && result.Statistics != null)
+                if (result != null &&
+                    result.Statistics != null)
                 {
-                    foreach (StatisticValue statistic in result.Statistics)
+                    foreach (
+                        StatisticValue stat
+                        in result.Statistics)
                     {
-                        if (statistic == null)
+                        if (stat == null)
                             continue;
 
-                        switch (statistic.StatisticName)
+                        switch (stat.StatisticName)
                         {
                             case "HighestWave":
-                                previousHighestWave = Mathf.Max(0, statistic.Value);
+                                highestWave =
+                                    Mathf.Max(
+                                        0,
+                                        stat.Value
+                                    );
                                 break;
+
                             case "GamesPlayed":
-                                previousGamesPlayed = Mathf.Max(0, statistic.Value);
+                                gamesPlayed =
+                                    Mathf.Max(
+                                        0,
+                                        stat.Value
+                                    );
                                 break;
+
                             case "TotalEnemiesKilled":
-                                previousTotalEnemiesKilled = Mathf.Max(0, statistic.Value);
+                                totalEnemiesKilled =
+                                    Mathf.Max(
+                                        0,
+                                        stat.Value
+                                    );
                                 break;
+
                             case "TotalGoldEarned":
-                                previousTotalGoldEarned = Mathf.Max(0, statistic.Value);
+                                totalGoldEarned =
+                                    Mathf.Max(
+                                        0,
+                                        stat.Value
+                                    );
                                 break;
+
                             case "TotalGameTime":
-                                previousTotalGameTime = Mathf.Max(0, statistic.Value);
+                                totalGameTime =
+                                    Mathf.Max(
+                                        0,
+                                        stat.Value
+                                    );
                                 break;
+
                             case "TotalSkillsPurchased":
-                                previousTotalSkillsPurchased = Mathf.Max(0, statistic.Value);
+                                totalSkillsPurchased =
+                                    Mathf.Max(
+                                        0,
+                                        stat.Value
+                                    );
                                 break;
+
                             case "TotalUpgradesPurchased":
-                                previousTotalUpgradesPurchased = Mathf.Max(0, statistic.Value);
+                                totalUpgradesPurchased =
+                                    Mathf.Max(
+                                        0,
+                                        stat.Value
+                                    );
                                 break;
                         }
                     }
                 }
 
-                int newHighestWave = Mathf.Max(previousHighestWave, highestWave);
-                int newGamesPlayed = previousGamesPlayed + 1;
-                int newTotalEnemiesKilled = previousTotalEnemiesKilled + enemiesKilled;
-                int newTotalGoldEarned = previousTotalGoldEarned + goldEarned;
-                int newTotalGameTime = previousTotalGameTime + gameDuration;
-                int newTotalSkillsPurchased = previousTotalSkillsPurchased + skillsPurchased;
-                int newTotalUpgradesPurchased = previousTotalUpgradesPurchased + upgradesPurchased;
+                int newHighestWave =
+                    Mathf.Max(
+                        highestWave,
+                        pendingHighestWave
+                    );
 
-                List<PlayFab.ClientModels.StatisticUpdate> statistics =
-                    new List<PlayFab.ClientModels.StatisticUpdate>
+                List<StatisticUpdate> updates =
+                    new List<StatisticUpdate>
                     {
-                        new PlayFab.ClientModels.StatisticUpdate
+                        new StatisticUpdate
                         {
-                            StatisticName = "EnemiesKilled",
-                            Value = enemiesKilled
+                            StatisticName =
+                                "EnemiesKilled",
+
+                            Value =
+                                pendingEnemiesKilled
                         },
-                        new PlayFab.ClientModels.StatisticUpdate
+
+                        new StatisticUpdate
                         {
-                            StatisticName = "HighestWave",
-                            Value = newHighestWave
+                            StatisticName =
+                                "HighestWave",
+
+                            Value =
+                                newHighestWave
                         },
-                        new PlayFab.ClientModels.StatisticUpdate
+
+                        new StatisticUpdate
                         {
-                            StatisticName = "GoldEarned",
-                            Value = goldEarned
+                            StatisticName =
+                                "GoldEarned",
+
+                            Value =
+                                pendingGoldEarned
                         },
-                        new PlayFab.ClientModels.StatisticUpdate
+
+                        new StatisticUpdate
                         {
-                            StatisticName = "GameDuration",
-                            Value = gameDuration
+                            StatisticName =
+                                "GameDuration",
+
+                            Value =
+                                pendingGameDuration
                         },
-                        new PlayFab.ClientModels.StatisticUpdate
+
+                        new StatisticUpdate
                         {
-                            StatisticName = "GamesPlayed",
-                            Value = newGamesPlayed
+                            StatisticName =
+                                "GamesPlayed",
+
+                            Value =
+                                gamesPlayed + 1
                         },
-                        new PlayFab.ClientModels.StatisticUpdate
+
+                        new StatisticUpdate
                         {
-                            StatisticName = "TotalEnemiesKilled",
-                            Value = newTotalEnemiesKilled
+                            StatisticName =
+                                "TotalEnemiesKilled",
+
+                            Value =
+                                totalEnemiesKilled +
+                                pendingEnemiesKilled
                         },
-                        new PlayFab.ClientModels.StatisticUpdate
+
+                        new StatisticUpdate
                         {
-                            StatisticName = "TotalGoldEarned",
-                            Value = newTotalGoldEarned
+                            StatisticName =
+                                "TotalGoldEarned",
+
+                            Value =
+                                totalGoldEarned +
+                                pendingGoldEarned
                         },
-                        new PlayFab.ClientModels.StatisticUpdate
+
+                        new StatisticUpdate
                         {
-                            StatisticName = "TotalGameTime",
-                            Value = newTotalGameTime
+                            StatisticName =
+                                "TotalGameTime",
+
+                            Value =
+                                totalGameTime +
+                                pendingGameDuration
                         },
-                        new PlayFab.ClientModels.StatisticUpdate
+
+                        new StatisticUpdate
                         {
-                            StatisticName = "TotalSkillsPurchased",
-                            Value = newTotalSkillsPurchased
+                            StatisticName =
+                                "TotalSkillsPurchased",
+
+                            Value =
+                                totalSkillsPurchased +
+                                pendingSkillsPurchased
                         },
-                        new PlayFab.ClientModels.StatisticUpdate
+
+                        new StatisticUpdate
                         {
-                            StatisticName = "TotalUpgradesPurchased",
-                            Value = newTotalUpgradesPurchased
+                            StatisticName =
+                                "TotalUpgradesPurchased",
+
+                            Value =
+                                totalUpgradesPurchased +
+                                pendingUpgradesPurchased
                         }
                     };
 
                 PlayFabClientAPI.UpdatePlayerStatistics(
                     new UpdatePlayerStatisticsRequest
                     {
-                        Statistics = statistics
+                        Statistics = updates
                     },
                     updateResult =>
                     {
-                        pendingGameOverStatisticsUpdated = true;
-                        PersistPendingGameOverStats();
-
                         Debug.Log(
-                            "[PlayFabManager] Statystyki Game Over zapisane w PlayFab."
+                            "[PlayFabManager] Game Over: " +
+                            "statystyki zapisane."
                         );
 
-                        SaveGameOverUserData(
-                            highestWave,
-                            damageDealt,
-                            buildSkills,
-                            buildUpgrades,
-                            buildSummary,
-                            callback
-                        );
+                        callback?.Invoke(true);
                     },
                     error =>
                     {
-                        Debug.LogError(
-                            "[PlayFabManager] UpdatePlayerStatistics NIEUDANE: " +
+                        Debug.LogWarning(
+                            "[PlayFabManager] Game Over: " +
+                            "nie udało się zapisać statystyk: " +
                             GetPlayFabErrorText(error)
                         );
+
                         callback?.Invoke(false);
                     }
                 );
             },
             error =>
             {
-                Debug.LogError(
-                    "[PlayFabManager] GetPlayerStatistics NIEUDANE: " +
+                Debug.LogWarning(
+                    "[PlayFabManager] GetPlayerStatistics: " +
                     GetPlayFabErrorText(error)
                 );
+
                 callback?.Invoke(false);
             }
         );
     }
 
+    // =========================================================
+    // GAME OVER USER DATA
+    // =========================================================
 
-    private void SaveGameOverUserData(
-        int highestWave,
-        double damageDealt,
-        string buildSkills,
-        string buildUpgrades,
-        string buildSummary,
-        Action<bool> callback = null)
+    private void FlushGameOverUserData(
+        Action finished)
     {
         if (!IsLoggedIn)
         {
-            callback?.Invoke(false);
+            finished?.Invoke();
             return;
         }
 
-        PlayFabClientAPI.GetPlayerStatistics(
-            new GetPlayerStatisticsRequest
-            {
-                StatisticNames = new List<string> { "HighestWave" }
-            },
-            result =>
-            {
-                int currentHighestWave = 0;
-
-                if (result != null && result.Statistics != null)
-                {
-                    foreach (StatisticValue statistic in result.Statistics)
-                    {
-                        if (statistic != null && statistic.StatisticName == "HighestWave")
-                        {
-                            currentHighestWave = Mathf.Max(0, statistic.Value);
-                            break;
-                        }
-                    }
-                }
-
-                bool isNewHighestWave = highestWave >= currentHighestWave;
-
-                Action<bool> finishUserData = success =>
-                {
-                    if (!success)
-                    {
-                        callback?.Invoke(false);
-                        return;
-                    }
-
-                    SaveLeaderboardScore(
-                        highestWave,
-                        damageDealt,
-                        pendingEnemiesKilled
-                    );
-
-                    callback?.Invoke(true);
-                };
-
-                if (isNewHighestWave)
-                {
-                    SaveGameBuildData(
-                        damageDealt,
-                        buildSkills,
-                        buildUpgrades,
-                        buildSummary,
-                        finishUserData
-                    );
-                }
-                else
-                {
-                    SaveDamageDealt(
-                        damageDealt,
-                        finishUserData
-                    );
-                }
-            },
-            error =>
-            {
-                Debug.LogError(
-                    "[PlayFabManager] Nie udało się pobrać HighestWave: " +
-                    GetPlayFabErrorText(error)
-                );
-                callback?.Invoke(false);
-            }
-        );
-    }
-
-
-    // =========================================================
-    // PERSISTENT PENDING GAME OVER
-    // =========================================================
-
-    private void PersistPendingGameOverStats()
-    {
-        if (!pendingGameOverStats)
-            return;
-
-        PlayerPrefs.SetInt(PENDING_GAMEOVER_KEY, 1);
-        PlayerPrefs.SetInt(PENDING_GAMEOVER_ENEMIES_KEY, pendingEnemiesKilled);
-        PlayerPrefs.SetString(
-            PENDING_GAMEOVER_DAMAGE_KEY,
-            pendingDamageDealt.ToString(CultureInfo.InvariantCulture)
-        );
-        PlayerPrefs.SetInt(PENDING_GAMEOVER_WAVE_KEY, pendingHighestWave);
-        PlayerPrefs.SetInt(PENDING_GAMEOVER_GOLD_KEY, pendingGoldEarned);
-        PlayerPrefs.SetInt(PENDING_GAMEOVER_DURATION_KEY, pendingGameDuration);
-        PlayerPrefs.SetInt(PENDING_GAMEOVER_SKILLS_KEY, pendingSkillsPurchased);
-        PlayerPrefs.SetInt(PENDING_GAMEOVER_UPGRADES_KEY, pendingUpgradesPurchased);
-        PlayerPrefs.SetString(PENDING_GAMEOVER_BUILD_SKILLS_KEY, pendingBuildSkills ?? "");
-        PlayerPrefs.SetString(PENDING_GAMEOVER_BUILD_UPGRADES_KEY, pendingBuildUpgrades ?? "");
-        PlayerPrefs.SetString(PENDING_GAMEOVER_BUILD_SUMMARY_KEY, pendingBuildSummary ?? "");
-        PlayerPrefs.SetInt(
-            PENDING_GAMEOVER_STATS_UPDATED_KEY,
-            pendingGameOverStatisticsUpdated ? 1 : 0
-        );
-        PlayerPrefs.Save();
-    }
-
-
-    private void LoadPendingGameOverStats()
-    {
-        if (PlayerPrefs.GetInt(PENDING_GAMEOVER_KEY, 0) != 1)
-            return;
-
-        pendingGameOverStats = true;
-        pendingEnemiesKilled = Mathf.Max(0, PlayerPrefs.GetInt(PENDING_GAMEOVER_ENEMIES_KEY, 0));
-
-        string damageText = PlayerPrefs.GetString(PENDING_GAMEOVER_DAMAGE_KEY, "0");
-
-        if (!double.TryParse(
-            damageText,
-            NumberStyles.Float,
-            CultureInfo.InvariantCulture,
-            out pendingDamageDealt))
+        if (pendingGameOverUserDataUpdated)
         {
-            pendingDamageDealt = 0.0;
-        }
+            SaveLeaderboardScore(
+                pendingHighestWave,
+                pendingDamageDealt,
+                pendingEnemiesKilled
+            );
 
-        pendingDamageDealt = Math.Max(0.0, pendingDamageDealt);
-        pendingHighestWave = Mathf.Max(0, PlayerPrefs.GetInt(PENDING_GAMEOVER_WAVE_KEY, 0));
-        pendingGoldEarned = Mathf.Max(0, PlayerPrefs.GetInt(PENDING_GAMEOVER_GOLD_KEY, 0));
-        pendingGameDuration = Mathf.Max(0, PlayerPrefs.GetInt(PENDING_GAMEOVER_DURATION_KEY, 0));
-        pendingSkillsPurchased = Mathf.Max(0, PlayerPrefs.GetInt(PENDING_GAMEOVER_SKILLS_KEY, 0));
-        pendingUpgradesPurchased = Mathf.Max(0, PlayerPrefs.GetInt(PENDING_GAMEOVER_UPGRADES_KEY, 0));
-        pendingBuildSkills = PlayerPrefs.GetString(PENDING_GAMEOVER_BUILD_SKILLS_KEY, "");
-        pendingBuildUpgrades = PlayerPrefs.GetString(PENDING_GAMEOVER_BUILD_UPGRADES_KEY, "");
-        pendingBuildSummary = PlayerPrefs.GetString(PENDING_GAMEOVER_BUILD_SUMMARY_KEY, "");
-        pendingGameOverStatisticsUpdated =
-            PlayerPrefs.GetInt(PENDING_GAMEOVER_STATS_UPDATED_KEY, 0) == 1;
+            ClearPendingGameOver();
 
-        gameOverStatsSaved = false;
+            finished?.Invoke();
 
-        Debug.Log(
-            "[PlayFabManager] Wczytano PENDING Game Over. StatsUpdated=" +
-            pendingGameOverStatisticsUpdated
-        );
-    }
-
-
-    private void ClearPendingGameOverStats()
-    {
-        pendingGameOverStats = false;
-        pendingGameOverStatisticsUpdated = false;
-        gameOverSaveInProgress = false;
-
-        pendingEnemiesKilled = 0;
-        pendingDamageDealt = 0.0;
-        pendingHighestWave = 0;
-        pendingGoldEarned = 0;
-        pendingGameDuration = 0;
-        pendingSkillsPurchased = 0;
-        pendingUpgradesPurchased = 0;
-        pendingBuildSkills = "";
-        pendingBuildUpgrades = "";
-        pendingBuildSummary = "";
-
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_KEY);
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_ENEMIES_KEY);
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_DAMAGE_KEY);
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_WAVE_KEY);
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_GOLD_KEY);
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_DURATION_KEY);
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_SKILLS_KEY);
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_UPGRADES_KEY);
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_BUILD_SKILLS_KEY);
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_BUILD_UPGRADES_KEY);
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_BUILD_SUMMARY_KEY);
-        PlayerPrefs.DeleteKey(PENDING_GAMEOVER_STATS_UPDATED_KEY);
-        PlayerPrefs.Save();
-    }
-
-
-    private void OnApplicationPause(bool pauseStatus)
-    {
-        if (!pauseStatus)
-            return;
-
-        PersistPendingGameOverStats();
-        PlayerPrefs.Save();
-    }
-
-
-    private void OnApplicationQuit()
-    {
-        PersistPendingGameOverStats();
-        PlayerPrefs.Save();
-    }
-
-
-    private void SaveDamageDealt(
-        double damageDealt,
-        Action<bool> callback = null)
-    {
-        if (!IsLoggedIn)
-        {
-            callback?.Invoke(false);
             return;
         }
 
@@ -3818,69 +2676,24 @@ public class PlayFabManager : MonoBehaviour
             {
                 {
                     "DamageDealt",
-                    damageDealt.ToString(
-                        CultureInfo.InvariantCulture
-                    )
-                }
-            };
-
-        PlayFabClientAPI.UpdateUserData(
-            new UpdateUserDataRequest
-            {
-                Data = data
-            },
-            result =>
-            {
-                callback?.Invoke(true);
-            },
-            error =>
-            {
-                Debug.LogError(
-                    "[PlayFabManager] SaveDamageDealt NIEUDANE: " +
-                    GetPlayFabErrorText(error)
-                );
-                callback?.Invoke(false);
-            }
-        );
-    }
-
-
-    private void SaveGameBuildData(
-        double damageDealt,
-        string buildSkills,
-        string buildUpgrades,
-        string buildSummary,
-        Action<bool> callback = null)
-    {
-        if (!IsLoggedIn)
-        {
-            callback?.Invoke(false);
-            return;
-        }
-
-        Dictionary<string, string> data =
-            new Dictionary<string, string>
-            {
-                {
-                    "DamageDealt",
-                    damageDealt.ToString(
+                    pendingDamageDealt.ToString(
                         CultureInfo.InvariantCulture
                     )
                 },
 
                 {
                     "BuildSkills",
-                    buildSkills ?? ""
+                    pendingBuildSkills ?? ""
                 },
 
                 {
                     "BuildUpgrades",
-                    buildUpgrades ?? ""
+                    pendingBuildUpgrades ?? ""
                 },
 
                 {
                     "BuildSummary",
-                    buildSummary ?? ""
+                    pendingBuildSummary ?? ""
                 }
             };
 
@@ -3891,130 +2704,592 @@ public class PlayFabManager : MonoBehaviour
             },
             result =>
             {
-                callback?.Invoke(true);
+                pendingGameOverUserDataUpdated = true;
+
+                PersistPendingData();
+
+                Debug.Log(
+                    "[PlayFabManager] Game Over: " +
+                    "UserData zapisane."
+                );
+
+                SaveLeaderboardScore(
+                    pendingHighestWave,
+                    pendingDamageDealt,
+                    pendingEnemiesKilled
+                );
+
+                ClearPendingGameOver();
+
+                finished?.Invoke();
             },
             error =>
             {
-                Debug.LogError(
-                    "[PlayFabManager] SaveGameBuildData NIEUDANE: " +
+                Debug.LogWarning(
+                    "[PlayFabManager] Game Over: " +
+                    "UserData nie zapisane: " +
                     GetPlayFabErrorText(error)
                 );
-                callback?.Invoke(false);
+
+                finished?.Invoke();
             }
         );
     }
 
+    // =========================================================
+    // CLEAR GAME OVER
+    // =========================================================
+
+    private void ClearPendingGameOver()
+    {
+        pendingGameOverStats = false;
+
+        pendingGameOverStatisticsUpdated = false;
+        pendingGameOverUserDataUpdated = false;
+
+        pendingEnemiesKilled = 0;
+        pendingDamageDealt = 0;
+        pendingHighestWave = 0;
+        pendingGoldEarned = 0;
+        pendingGameDuration = 0;
+        pendingSkillsPurchased = 0;
+        pendingUpgradesPurchased = 0;
+
+        pendingBuildSkills = "";
+        pendingBuildUpgrades = "";
+        pendingBuildSummary = "";
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_ENEMIES_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_DAMAGE_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_WAVE_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_GOLD_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_DURATION_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_SKILLS_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_UPGRADES_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_BUILD_SKILLS_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_BUILD_UPGRADES_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_BUILD_SUMMARY_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_STATS_UPDATED_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAMEOVER_USERDATA_UPDATED_KEY
+        );
+
+        PlayerPrefs.Save();
+    }
 
     // =========================================================
-    // LEADERBOARD MODELS
+    // XP FLUSH
     // =========================================================
 
-    [Serializable]
-    public class LeaderboardEntryData
+    private void FlushXP(
+        Action finished)
     {
-        public string entityId;
+        if (!IsLoggedIn ||
+            pendingXP <= 0.0)
+        {
+            finished?.Invoke();
+            return;
+        }
 
-        public int rank;
-        public string displayName;
-        public int highestWave;
-        public double totalDamage;
-        public int enemiesKilled;
+        double xpToAdd =
+            pendingXP;
+
+        PlayFabClientAPI.GetUserData(
+            new GetUserDataRequest(),
+            result =>
+            {
+                double serverXP =
+                    ReadDoubleUserData(
+                        result,
+                        PLAYER_XP_KEY,
+                        0.0
+                    );
+
+                int serverLevel =
+                    Mathf.Clamp(
+                        ReadIntUserData(
+                            result,
+                            PLAYER_LEVEL_KEY,
+                            startingLevel
+                        ),
+                        1,
+                        maximumLevel
+                    );
+
+                double newXP =
+                    serverXP + xpToAdd;
+
+                int newLevel =
+                    CalculateLevelFromXPForLevel(
+                        newXP,
+                        serverLevel
+                    );
+
+                int levelsGained =
+                    Mathf.Max(
+                        0,
+                        newLevel - serverLevel
+                    );
+
+                int newTalentPoints =
+                    TalentPoints +
+                    levelsGained *
+                    TALENT_POINTS_PER_LEVEL;
+
+                int newForgetPoints =
+                    ForgetPoints +
+                    levelsGained *
+                    FORGET_POINTS_PER_PLAYER_LEVEL;
+
+                string talentJson =
+                    CreateTalentProgressJson(
+                        newTalentPoints,
+                        loadedTalentLevels,
+                        newForgetPoints
+                    );
+
+                Dictionary<string, string> data =
+                    new Dictionary<string, string>
+                    {
+                        {
+                            PLAYER_XP_KEY,
+                            newXP.ToString(
+                                CultureInfo.InvariantCulture
+                            )
+                        },
+
+                        {
+                            PLAYER_LEVEL_KEY,
+                            newLevel.ToString()
+                        },
+
+                        {
+                            PLAYER_TALENT_POINTS_KEY,
+                            newTalentPoints.ToString()
+                        },
+
+                        {
+                            PLAYER_FORGET_POINTS_KEY,
+                            newForgetPoints.ToString()
+                        },
+
+                        {
+                            PLAYER_TALENT_PROGRESS_KEY,
+                            talentJson
+                        }
+                    };
+
+                PlayFabClientAPI.UpdateUserData(
+                    new UpdateUserDataRequest
+                    {
+                        Data = data
+                    },
+                    saveResult =>
+                    {
+                        PlayerXP = newXP;
+                        PlayerLevel = newLevel;
+
+                        TalentPoints =
+                            newTalentPoints;
+
+                        ForgetPoints =
+                            newForgetPoints;
+
+                        pendingXP = 0;
+
+                        PersistPendingXP();
+
+                        IsProgressionLoaded = true;
+                        IsTalentPointsLoaded = true;
+                        IsTalentProgressLoaded = true;
+
+                        ApplyTalentProgressToManager();
+
+                        Debug.Log(
+                            "[PlayFabManager] XP zapisane. " +
+                            "XP = " +
+                            PlayerXP +
+                            ", Level = " +
+                            PlayerLevel
+                        );
+
+                        finished?.Invoke();
+                    },
+                    error =>
+                    {
+                        Debug.LogWarning(
+                            "[PlayFabManager] XP nie zapisane: " +
+                            GetPlayFabErrorText(error)
+                        );
+
+                        finished?.Invoke();
+                    }
+                );
+            },
+            error =>
+            {
+                Debug.LogWarning(
+                    "[PlayFabManager] Nie udało się pobrać XP: " +
+                    GetPlayFabErrorText(error)
+                );
+
+                finished?.Invoke();
+            }
+        );
     }
 
-
-    [Serializable]
-    public class LeaderboardPageResult
+    private int CalculateLevelFromXPForLevel(
+        double xp,
+        int startingServerLevel)
     {
-        public bool success;
+        int level =
+            Mathf.Clamp(
+                startingServerLevel,
+                1,
+                maximumLevel
+            );
 
-        public int page;
-        public int totalEntries;
-        public int totalPages;
+        while (level < maximumLevel)
+        {
+            double required =
+                GetTotalXPRequiredForLevel(
+                    level + 1
+                );
 
-        public bool hasPreviousPage;
-        public bool hasNextPage;
+            if (xp < required)
+                break;
 
-        public List<LeaderboardEntryData> entries =
-            new List<LeaderboardEntryData>();
+            level++;
+        }
 
-        public string errorMessage;
+        return level;
     }
 
+    // =========================================================
+    // PLAYER PREFS SAVE
+    // =========================================================
 
-    [Serializable]
-    public class MyLeaderboardResult
+    private void PersistPendingData()
     {
-        public bool success;
-        public bool hasEntry;
+        if (pendingGameOverStats)
+        {
+            PlayerPrefs.SetInt(
+                PENDING_GAMEOVER_KEY,
+                1
+            );
 
-        public LeaderboardEntryData entry;
+            PlayerPrefs.SetInt(
+                PENDING_GAMEOVER_ENEMIES_KEY,
+                pendingEnemiesKilled
+            );
 
-        public string errorMessage;
+            PlayerPrefs.SetString(
+                PENDING_GAMEOVER_DAMAGE_KEY,
+                pendingDamageDealt.ToString(
+                    CultureInfo.InvariantCulture
+                )
+            );
+
+            PlayerPrefs.SetInt(
+                PENDING_GAMEOVER_WAVE_KEY,
+                pendingHighestWave
+            );
+
+            PlayerPrefs.SetInt(
+                PENDING_GAMEOVER_GOLD_KEY,
+                pendingGoldEarned
+            );
+
+            PlayerPrefs.SetInt(
+                PENDING_GAMEOVER_DURATION_KEY,
+                pendingGameDuration
+            );
+
+            PlayerPrefs.SetInt(
+                PENDING_GAMEOVER_SKILLS_KEY,
+                pendingSkillsPurchased
+            );
+
+            PlayerPrefs.SetInt(
+                PENDING_GAMEOVER_UPGRADES_KEY,
+                pendingUpgradesPurchased
+            );
+
+            PlayerPrefs.SetString(
+                PENDING_GAMEOVER_BUILD_SKILLS_KEY,
+                pendingBuildSkills ?? ""
+            );
+
+            PlayerPrefs.SetString(
+                PENDING_GAMEOVER_BUILD_UPGRADES_KEY,
+                pendingBuildUpgrades ?? ""
+            );
+
+            PlayerPrefs.SetString(
+                PENDING_GAMEOVER_BUILD_SUMMARY_KEY,
+                pendingBuildSummary ?? ""
+            );
+
+            PlayerPrefs.SetInt(
+                PENDING_GAMEOVER_STATS_UPDATED_KEY,
+                pendingGameOverStatisticsUpdated
+                    ? 1
+                    : 0
+            );
+
+            PlayerPrefs.SetInt(
+                PENDING_GAMEOVER_USERDATA_UPDATED_KEY,
+                pendingGameOverUserDataUpdated
+                    ? 1
+                    : 0
+            );
+        }
+
+        PersistPendingXP();
+
+        PlayerPrefs.Save();
     }
 
+    private void PersistPendingXP()
+    {
+        if (pendingXP > 0.0)
+        {
+            PlayerPrefs.SetString(
+                PENDING_XP_KEY,
+                pendingXP.ToString(
+                    CultureInfo.InvariantCulture
+                )
+            );
+        }
+        else
+        {
+            PlayerPrefs.DeleteKey(
+                PENDING_XP_KEY
+            );
+        }
+    }
+
+    private void LoadPendingData()
+    {
+        if (PlayerPrefs.GetInt(
+            PENDING_GAMEOVER_KEY,
+            0
+        ) == 1)
+        {
+            pendingGameOverStats = true;
+
+            pendingEnemiesKilled =
+                Mathf.Max(
+                    0,
+                    PlayerPrefs.GetInt(
+                        PENDING_GAMEOVER_ENEMIES_KEY,
+                        0
+                    )
+                );
+
+            string damage =
+                PlayerPrefs.GetString(
+                    PENDING_GAMEOVER_DAMAGE_KEY,
+                    "0"
+                );
+
+            if (!double.TryParse(
+                damage,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out pendingDamageDealt))
+            {
+                pendingDamageDealt = 0;
+            }
+
+            pendingDamageDealt =
+                Math.Max(
+                    0,
+                    pendingDamageDealt
+                );
+
+            pendingHighestWave =
+                Mathf.Max(
+                    0,
+                    PlayerPrefs.GetInt(
+                        PENDING_GAMEOVER_WAVE_KEY,
+                        0
+                    )
+                );
+
+            pendingGoldEarned =
+                Mathf.Max(
+                    0,
+                    PlayerPrefs.GetInt(
+                        PENDING_GAMEOVER_GOLD_KEY,
+                        0
+                    )
+                );
+
+            pendingGameDuration =
+                Mathf.Max(
+                    0,
+                    PlayerPrefs.GetInt(
+                        PENDING_GAMEOVER_DURATION_KEY,
+                        0
+                    )
+                );
+
+            pendingSkillsPurchased =
+                Mathf.Max(
+                    0,
+                    PlayerPrefs.GetInt(
+                        PENDING_GAMEOVER_SKILLS_KEY,
+                        0
+                    )
+                );
+
+            pendingUpgradesPurchased =
+                Mathf.Max(
+                    0,
+                    PlayerPrefs.GetInt(
+                        PENDING_GAMEOVER_UPGRADES_KEY,
+                        0
+                    )
+                );
+
+            pendingBuildSkills =
+                PlayerPrefs.GetString(
+                    PENDING_GAMEOVER_BUILD_SKILLS_KEY,
+                    ""
+                );
+
+            pendingBuildUpgrades =
+                PlayerPrefs.GetString(
+                    PENDING_GAMEOVER_BUILD_UPGRADES_KEY,
+                    ""
+                );
+
+            pendingBuildSummary =
+                PlayerPrefs.GetString(
+                    PENDING_GAMEOVER_BUILD_SUMMARY_KEY,
+                    ""
+                );
+
+            pendingGameOverStatisticsUpdated =
+                PlayerPrefs.GetInt(
+                    PENDING_GAMEOVER_STATS_UPDATED_KEY,
+                    0
+                ) == 1;
+
+            pendingGameOverUserDataUpdated =
+                PlayerPrefs.GetInt(
+                    PENDING_GAMEOVER_USERDATA_UPDATED_KEY,
+                    0
+                ) == 1;
+        }
+
+        string xp =
+            PlayerPrefs.GetString(
+                PENDING_XP_KEY,
+                "0"
+            );
+
+        if (!double.TryParse(
+            xp,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out pendingXP))
+        {
+            pendingXP = 0;
+        }
+
+        pendingXP =
+            Math.Max(
+                0,
+                pendingXP
+            );
+
+        if (pendingGameOverStats)
+        {
+            Debug.Log(
+                "[PlayFabManager] Znaleziono oczekujący Game Over."
+            );
+        }
+
+        if (pendingXP > 0)
+        {
+            Debug.Log(
+                "[PlayFabManager] Znaleziono oczekujące XP: " +
+                pendingXP
+            );
+        }
+    }
+
+    // =========================================================
+    // PUBLIC GAME OVER STATE
+    // =========================================================
+
+    private void OnApplicationPause(
+        bool pauseStatus)
+    {
+        if (!pauseStatus)
+            return;
+
+        PersistPendingData();
+    }
+
+    private void OnApplicationQuit()
+    {
+        PersistPendingData();
+    }
+
+    // =========================================================
+    // LEADERBOARD
+    // =========================================================
 
     public string GetLeaderboardName()
     {
         return leaderboardName;
     }
 
-
-    // =========================================================
-    // SAVE LEADERBOARD SCORE
-    // =========================================================
-
     private void SaveLeaderboardScore(
         int highestWave,
         double damageDealt,
         int enemiesKilled)
     {
-        if (!IsLoggedIn)
-            return;
-
-        if (!IsEntityLoggedIn ||
-            !PlayFabSettings.staticPlayer
-                .IsEntityLoggedIn())
-        {
-            pendingLeaderboardSave = true;
-
-            pendingLeaderboardHighestWave =
-                highestWave;
-
-            pendingLeaderboardDamage =
-                damageDealt;
-
-            pendingLeaderboardEnemiesKilled =
-                enemiesKilled;
-
-            Debug.Log(
-                "[PlayFabManager] Entity Token nie jest jeszcze " +
-                "gotowy. Wynik leaderboardu oczekuje na token."
-            );
-
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(
-            leaderboardName))
-        {
-            Debug.LogError(
-                "[PlayFabManager] Nazwa leaderboardu jest pusta."
-            );
-
-            return;
-        }
-
-        if (string.IsNullOrEmpty(
-            PlayFabId))
-        {
-            Debug.LogError(
-                "[PlayFabManager] Brak PlayFabId - " +
-                "nie można zapisać leaderboardu."
-            );
-
-            return;
-        }
-
         highestWave =
             Mathf.Max(
                 0,
@@ -4029,9 +3304,27 @@ public class PlayFabManager : MonoBehaviour
 
         if (double.IsNaN(damageDealt) ||
             double.IsInfinity(damageDealt) ||
-            damageDealt < 0.0)
+            damageDealt < 0)
         {
-            damageDealt = 0.0;
+            damageDealt = 0;
+        }
+
+        if (!IsLoggedIn ||
+            !IsEntityLoggedIn ||
+            !PlayFabSettings.staticPlayer.IsEntityLoggedIn())
+        {
+            pendingLeaderboardSave = true;
+
+            pendingLeaderboardHighestWave =
+                highestWave;
+
+            pendingLeaderboardDamage =
+                damageDealt;
+
+            pendingLeaderboardEnemiesKilled =
+                enemiesKilled;
+
+            return;
         }
 
         long damageScore =
@@ -4041,9 +3334,9 @@ public class PlayFabManager : MonoBehaviour
             );
 
         PlayFabProgressionGetMyEntry(
-            currentEntry =>
+            current =>
             {
-                if (currentEntry == null)
+                if (current == null)
                 {
                     UpdateLeaderboardScore(
                         highestWave,
@@ -4054,48 +3347,33 @@ public class PlayFabManager : MonoBehaviour
                     return;
                 }
 
-                int oldWave =
-                    currentEntry.highestWave;
-
                 long oldDamage =
                     (long)Math.Round(
-                        currentEntry.totalDamage,
+                        current.totalDamage,
                         MidpointRounding.AwayFromZero
                     );
 
-                int oldKills =
-                    currentEntry.enemiesKilled;
-
-                bool newScoreIsBetter =
+                bool better =
                     IsLeaderboardScoreBetter(
                         highestWave,
                         damageScore,
                         enemiesKilled,
-                        oldWave,
+                        current.highestWave,
                         oldDamage,
-                        oldKills
+                        current.enemiesKilled
                     );
 
-                if (!newScoreIsBetter)
+                if (better)
                 {
                     UpdateLeaderboardScore(
-                        oldWave,
-                        oldDamage,
-                        oldKills
+                        highestWave,
+                        damageScore,
+                        enemiesKilled
                     );
-
-                    return;
                 }
-
-                UpdateLeaderboardScore(
-                    highestWave,
-                    damageScore,
-                    enemiesKilled
-                );
             }
         );
     }
-
 
     private bool IsLeaderboardScoreBetter(
         int newWave,
@@ -4105,40 +3383,22 @@ public class PlayFabManager : MonoBehaviour
         long oldDamage,
         int oldKills)
     {
-        if (newWave > oldWave)
-            return true;
+        if (newWave != oldWave)
+            return newWave > oldWave;
 
-        if (newWave < oldWave)
-            return false;
+        if (newDamage != oldDamage)
+            return newDamage > oldDamage;
 
-        if (newDamage > oldDamage)
-            return true;
-
-        if (newDamage < oldDamage)
-            return false;
-
-        if (newKills > oldKills)
-            return true;
-
-        return false;
+        return newKills > oldKills;
     }
-
-
-    // =========================================================
-    // UPDATE LEADERBOARD
-    // =========================================================
 
     private void UpdateLeaderboardScore(
         int highestWave,
         long damageScore,
         int enemiesKilled)
     {
-        if (!IsLoggedIn)
-            return;
-
-        if (!IsEntityLoggedIn ||
-            !PlayFabSettings.staticPlayer
-                .IsEntityLoggedIn())
+        if (!IsLoggedIn ||
+            !IsEntityLoggedIn)
         {
             pendingLeaderboardSave = true;
 
@@ -4154,15 +3414,10 @@ public class PlayFabManager : MonoBehaviour
             return;
         }
 
-        string leaderboardDisplayName =
-            PlayerDisplayName;
-
-        if (string.IsNullOrWhiteSpace(
-            leaderboardDisplayName))
-        {
-            leaderboardDisplayName =
-                "Gracz";
-        }
+        string displayName =
+            string.IsNullOrWhiteSpace(PlayerDisplayName)
+                ? "Gracz"
+                : PlayerDisplayName;
 
         List<ProgressionModels.LeaderboardEntryUpdate>
             entries =
@@ -4175,7 +3430,7 @@ public class PlayFabManager : MonoBehaviour
                         PlayFabId,
 
                     Metadata =
-                        leaderboardDisplayName,
+                        displayName,
 
                     Scores =
                         new List<string>
@@ -4195,72 +3450,59 @@ public class PlayFabManager : MonoBehaviour
                 }
             };
 
-        ProgressionModels.UpdateLeaderboardEntriesRequest
-            request =
-            new ProgressionModels
-                .UpdateLeaderboardEntriesRequest
+        PlayFabProgressionAPI.UpdateLeaderboardEntries(
+            new ProgressionModels.UpdateLeaderboardEntriesRequest
             {
                 LeaderboardName =
                     leaderboardName,
 
                 Entries =
                     entries
-            };
-
-        PlayFabProgressionAPI.UpdateLeaderboardEntries(
-            request,
+            },
             result =>
             {
                 Debug.Log(
-                    "[PlayFabManager] Wynik leaderboardu zapisany. " +
-                    "Nazwa: " +
-                    leaderboardDisplayName
+                    "[PlayFabManager] Leaderboard zapisany."
                 );
             },
             error =>
             {
-                Debug.LogError(
-                    "[PlayFabManager] Nie udało się zapisać " +
-                    "leaderboardu: " +
+                Debug.LogWarning(
+                    "[PlayFabManager] Leaderboard nie zapisany: " +
                     GetPlayFabErrorText(error)
                 );
+
+                pendingLeaderboardSave = true;
+
+                pendingLeaderboardHighestWave =
+                    highestWave;
+
+                pendingLeaderboardDamage =
+                    damageScore;
+
+                pendingLeaderboardEnemiesKilled =
+                    enemiesKilled;
             }
         );
     }
 
-
     // =========================================================
-    // POBIERANIE MOJEGO WYNIKU
+    // LEADERBOARD - CURRENT ENTRY
     // =========================================================
 
     private void PlayFabProgressionGetMyEntry(
         Action<LeaderboardEntryData> callback)
     {
-        if (!IsLoggedIn)
+        if (!IsLoggedIn ||
+            !IsEntityLoggedIn ||
+            string.IsNullOrEmpty(PlayFabId))
         {
             callback?.Invoke(null);
             return;
         }
 
-        if (!IsEntityLoggedIn ||
-            !PlayFabSettings.staticPlayer
-                .IsEntityLoggedIn())
-        {
-            callback?.Invoke(null);
-            return;
-        }
-
-        if (string.IsNullOrEmpty(
-            PlayFabId))
-        {
-            callback?.Invoke(null);
-            return;
-        }
-
-        ProgressionModels.GetLeaderboardForEntitiesRequest
-            request =
-            new ProgressionModels
-                .GetLeaderboardForEntitiesRequest
+        PlayFabProgressionAPI.GetLeaderboardForEntities(
+            new ProgressionModels.GetLeaderboardForEntitiesRequest
             {
                 LeaderboardName =
                     leaderboardName,
@@ -4270,10 +3512,7 @@ public class PlayFabManager : MonoBehaviour
                     {
                         PlayFabId
                     }
-            };
-
-        PlayFabProgressionAPI.GetLeaderboardForEntities(
-            request,
+            },
             result =>
             {
                 if (result == null ||
@@ -4284,32 +3523,18 @@ public class PlayFabManager : MonoBehaviour
                     return;
                 }
 
-                ProgressionModels.EntityLeaderboardEntry
-                    source =
-                    result.Rankings[0];
-
-                LeaderboardEntryData converted =
-                    ConvertLeaderboardEntry(
-                        source
-                    );
-
                 callback?.Invoke(
-                    converted
+                    ConvertLeaderboardEntry(
+                        result.Rankings[0]
+                    )
                 );
             },
             error =>
             {
-                Debug.LogWarning(
-                    "[PlayFabManager] Nie udało się pobrać " +
-                    "aktualnego wyniku leaderboardu: " +
-                    GetPlayFabErrorText(error)
-                );
-
                 callback?.Invoke(null);
             }
         );
     }
-
 
     // =========================================================
     // LEADERBOARD PAGE
@@ -4326,6 +3551,8 @@ public class PlayFabManager : MonoBehaviour
                 {
                     success = false,
                     page = page,
+                    entries =
+                        new List<LeaderboardEntryData>(),
                     errorMessage =
                         "Gracz nie jest zalogowany."
                 }
@@ -4334,9 +3561,7 @@ public class PlayFabManager : MonoBehaviour
             return;
         }
 
-        if (!IsEntityLoggedIn ||
-            !PlayFabSettings.staticPlayer
-                .IsEntityLoggedIn())
+        if (!IsEntityLoggedIn)
         {
             callback?.Invoke(
                 new LeaderboardPageResult
@@ -4344,10 +3569,9 @@ public class PlayFabManager : MonoBehaviour
                     success = false,
                     page = page,
                     entries =
-                        new List<
-                            LeaderboardEntryData>(),
+                        new List<LeaderboardEntryData>(),
                     errorMessage =
-                        "Entity Token nie jest jeszcze gotowy."
+                        "Leaderboard jest chwilowo niedostępny."
                 }
             );
 
@@ -4367,10 +3591,8 @@ public class PlayFabManager : MonoBehaviour
                 1
             );
 
-        ProgressionModels.GetEntityLeaderboardRequest
-            request =
-            new ProgressionModels
-                .GetEntityLeaderboardRequest
+        PlayFabProgressionAPI.GetLeaderboard(
+            new ProgressionModels.GetEntityLeaderboardRequest
             {
                 LeaderboardName =
                     leaderboardName,
@@ -4380,50 +3602,41 @@ public class PlayFabManager : MonoBehaviour
 
                 StartingPosition =
                     startingPosition
-            };
-
-        PlayFabProgressionAPI.GetLeaderboard(
-            request,
+            },
             result =>
             {
                 LeaderboardPageResult pageResult =
                     new LeaderboardPageResult
                     {
                         success = true,
-
                         page = page,
-
-                        totalEntries =
-                            result != null
-                                ? (int)result.EntryCount
-                                : 0,
-
                         entries =
-                            new List<
-                                LeaderboardEntryData>()
+                            new List<LeaderboardEntryData>()
                     };
 
-                if (result != null &&
-                    result.Rankings != null)
+                if (result != null)
                 {
-                    foreach (
-                        ProgressionModels
-                            .EntityLeaderboardEntry entry
-                        in result.Rankings)
+                    pageResult.totalEntries =
+                        (int)result.EntryCount;
+
+                    if (result.Rankings != null)
                     {
-                        if (entry == null)
-                            continue;
-
-                        LeaderboardEntryData converted =
-                            ConvertLeaderboardEntry(
-                                entry
-                            );
-
-                        if (converted != null)
+                        foreach (
+                            ProgressionModels.EntityLeaderboardEntry
+                            entry
+                            in result.Rankings)
                         {
-                            pageResult.entries.Add(
-                                converted
-                            );
+                            LeaderboardEntryData converted =
+                                ConvertLeaderboardEntry(
+                                    entry
+                                );
+
+                            if (converted != null)
+                            {
+                                pageResult.entries.Add(
+                                    converted
+                                );
+                            }
                         }
                     }
                 }
@@ -4450,23 +3663,16 @@ public class PlayFabManager : MonoBehaviour
                     new LeaderboardPageResult
                     {
                         success = false,
-
                         page = page,
-
                         entries =
-                            new List<
-                                LeaderboardEntryData>(),
-
+                            new List<LeaderboardEntryData>(),
                         errorMessage =
-                            GetPlayFabErrorText(
-                                error
-                            )
+                            GetPlayFabErrorText(error)
                     }
                 );
             }
         );
     }
-
 
     public void LoadLeaderboard(
         Action<LeaderboardPageResult> callback)
@@ -4477,7 +3683,6 @@ public class PlayFabManager : MonoBehaviour
         );
     }
 
-
     public void LoadLeaderboardNextPage(
         int currentPage,
         Action<LeaderboardPageResult> callback)
@@ -4487,7 +3692,6 @@ public class PlayFabManager : MonoBehaviour
             callback
         );
     }
-
 
     public void LoadLeaderboardPreviousPage(
         int currentPage,
@@ -4502,66 +3706,33 @@ public class PlayFabManager : MonoBehaviour
         );
     }
 
-
     // =========================================================
-    // MÓJ WYNIK / MIEJSCE
+    // MY LEADERBOARD ENTRY
     // =========================================================
 
     public void LoadMyLeaderboardEntry(
         Action<MyLeaderboardResult> callback)
     {
-        if (!IsLoggedIn)
+        if (!IsLoggedIn ||
+            !IsEntityLoggedIn ||
+            string.IsNullOrEmpty(PlayFabId))
         {
             callback?.Invoke(
                 new MyLeaderboardResult
                 {
                     success = false,
                     hasEntry = false,
+                    entry = null,
                     errorMessage =
-                        "Gracz nie jest zalogowany."
+                        "Leaderboard jest chwilowo niedostępny."
                 }
             );
 
             return;
         }
 
-        if (!IsEntityLoggedIn ||
-            !PlayFabSettings.staticPlayer
-                .IsEntityLoggedIn())
-        {
-            callback?.Invoke(
-                new MyLeaderboardResult
-                {
-                    success = false,
-                    hasEntry = false,
-                    errorMessage =
-                        "Entity Token nie jest jeszcze gotowy."
-                }
-            );
-
-            return;
-        }
-
-        if (string.IsNullOrEmpty(
-            PlayFabId))
-        {
-            callback?.Invoke(
-                new MyLeaderboardResult
-                {
-                    success = false,
-                    hasEntry = false,
-                    errorMessage =
-                        "Brak PlayFabId."
-                }
-            );
-
-            return;
-        }
-
-        ProgressionModels.GetLeaderboardForEntitiesRequest
-            request =
-            new ProgressionModels
-                .GetLeaderboardForEntitiesRequest
+        PlayFabProgressionAPI.GetLeaderboardForEntities(
+            new ProgressionModels.GetLeaderboardForEntitiesRequest
             {
                 LeaderboardName =
                     leaderboardName,
@@ -4571,10 +3742,7 @@ public class PlayFabManager : MonoBehaviour
                     {
                         PlayFabId
                     }
-            };
-
-        PlayFabProgressionAPI.GetLeaderboardForEntities(
-            request,
+            },
             result =>
             {
                 if (result == null ||
@@ -4598,19 +3766,11 @@ public class PlayFabManager : MonoBehaviour
                         result.Rankings[0]
                     );
 
-                if (entry != null &&
-                    string.IsNullOrWhiteSpace(
-                        entry.displayName))
-                {
-                    entry.displayName =
-                        PlayerDisplayName;
-                }
-
                 callback?.Invoke(
                     new MyLeaderboardResult
                     {
                         success = true,
-                        hasEntry = true,
+                        hasEntry = entry != null,
                         entry = entry
                     }
                 );
@@ -4624,19 +3784,56 @@ public class PlayFabManager : MonoBehaviour
                         hasEntry = false,
                         entry = null,
                         errorMessage =
-                            GetPlayFabErrorText(
-                                error
-                            )
+                            GetPlayFabErrorText(error)
                     }
                 );
             }
         );
     }
 
+    // =========================================================
+    // LEADERBOARD MODELS
+    // =========================================================
 
-    // =========================================================
-    // CONVERT LEADERBOARD ENTRY
-    // =========================================================
+    [Serializable]
+    public class LeaderboardEntryData
+    {
+        public string entityId;
+        public int rank;
+        public string displayName;
+        public int highestWave;
+        public double totalDamage;
+        public int enemiesKilled;
+    }
+
+    [Serializable]
+    public class LeaderboardPageResult
+    {
+        public bool success;
+
+        public int page;
+        public int totalEntries;
+        public int totalPages;
+
+        public bool hasPreviousPage;
+        public bool hasNextPage;
+
+        public List<LeaderboardEntryData> entries =
+            new List<LeaderboardEntryData>();
+
+        public string errorMessage;
+    }
+
+    [Serializable]
+    public class MyLeaderboardResult
+    {
+        public bool success;
+        public bool hasEntry;
+
+        public LeaderboardEntryData entry;
+
+        public string errorMessage;
+    }
 
     private LeaderboardEntryData ConvertLeaderboardEntry(
         ProgressionModels.EntityLeaderboardEntry source)
@@ -4644,80 +3841,56 @@ public class PlayFabManager : MonoBehaviour
         if (source == null)
             return null;
 
-        int highestWave = 0;
-        long totalDamage = 0;
-        int enemiesKilled = 0;
+        int wave = 0;
+        long damage = 0;
+        int kills = 0;
 
-        if (source.Scores != null &&
-            source.Scores.Count > 0)
+        if (source.Scores != null)
         {
-            int.TryParse(
-                source.Scores[0],
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out highestWave
-            );
-        }
+            if (source.Scores.Count > 0)
+            {
+                int.TryParse(
+                    source.Scores[0],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out wave
+                );
+            }
 
-        if (source.Scores != null &&
-            source.Scores.Count > 1)
-        {
-            long.TryParse(
-                source.Scores[1],
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out totalDamage
-            );
-        }
+            if (source.Scores.Count > 1)
+            {
+                long.TryParse(
+                    source.Scores[1],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out damage
+                );
+            }
 
-        if (source.Scores != null &&
-            source.Scores.Count > 2)
-        {
-            int.TryParse(
-                source.Scores[2],
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out enemiesKilled
-            );
+            if (source.Scores.Count > 2)
+            {
+                int.TryParse(
+                    source.Scores[2],
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture,
+                    out kills
+                );
+            }
         }
 
         string displayName =
             source.Metadata;
 
-        if (string.IsNullOrWhiteSpace(
-            displayName))
-        {
-            displayName =
-                source.DisplayName;
-        }
+        if (string.IsNullOrWhiteSpace(displayName))
+            displayName = source.DisplayName;
+
+        if (string.IsNullOrWhiteSpace(displayName))
+            displayName = "Gracz";
 
         string entityId = "";
 
         if (source.Entity != null)
-        {
-            entityId =
-                source.Entity.Id;
-        }
-
-        if (string.IsNullOrWhiteSpace(
-            displayName) &&
-            !string.IsNullOrWhiteSpace(
-                entityId) &&
-            string.Equals(
-                entityId,
-                PlayFabId,
-                StringComparison.Ordinal))
-        {
-            displayName =
-                PlayerDisplayName;
-        }
-
-        if (string.IsNullOrWhiteSpace(
-            displayName))
-        {
-            displayName =
-                "Gracz";
-        }
+            entityId = source.Entity.Id;
 
         return new LeaderboardEntryData
         {
@@ -4733,27 +3906,22 @@ public class PlayFabManager : MonoBehaviour
             highestWave =
                 Mathf.Max(
                     0,
-                    highestWave
+                    wave
                 ),
 
             totalDamage =
                 Math.Max(
                     0,
-                    totalDamage
+                    damage
                 ),
 
             enemiesKilled =
                 Mathf.Max(
                     0,
-                    enemiesKilled
+                    kills
                 )
         };
     }
-
-
-    // =========================================================
-    // LEADERBOARD PAGES
-    // =========================================================
 
     private int CalculateTotalLeaderboardPages(
         int totalEntries)
@@ -4767,7 +3935,6 @@ public class PlayFabManager : MonoBehaviour
         );
     }
 
-
     // =========================================================
     // PLAYFAB ERROR
     // =========================================================
@@ -4778,11 +3945,8 @@ public class PlayFabManager : MonoBehaviour
         if (error == null)
             return "Nieznany błąd PlayFab.";
 
-        if (!string.IsNullOrEmpty(
-            error.ErrorMessage))
-        {
+        if (!string.IsNullOrEmpty(error.ErrorMessage))
             return error.ErrorMessage;
-        }
 
         return error.Error.ToString();
     }
