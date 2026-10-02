@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -35,6 +36,8 @@ public class PlayFabManager : MonoBehaviour
     public string EntityToken { get; private set; }
 
     private PlayFabAuthenticationInstanceAPI authenticationAPI;
+
+    private bool entityTokenRequestInProgress = false;
 
 
     // =========================================================
@@ -128,11 +131,30 @@ public class PlayFabManager : MonoBehaviour
     // PENDING LEADERBOARD SAVE
     // =========================================================
 
+    private const string PENDING_LEADERBOARD_SAVE_KEY =
+        "PendingLeaderboardSave";
+
+    private const string PENDING_LEADERBOARD_WAVE_KEY =
+        "PendingLeaderboardWave";
+
+    private const string PENDING_LEADERBOARD_DAMAGE_KEY =
+        "PendingLeaderboardDamage";
+
+    private const string PENDING_LEADERBOARD_KILLS_KEY =
+        "PendingLeaderboardKills";
+
+    private const float LEADERBOARD_RETRY_INTERVAL =
+        5.0f;
+
     private bool pendingLeaderboardSave = false;
 
     private int pendingLeaderboardHighestWave = 0;
     private double pendingLeaderboardDamage = 0.0;
     private int pendingLeaderboardEnemiesKilled = 0;
+
+    private bool leaderboardSaveInProgress = false;
+
+    private Coroutine leaderboardRetryCoroutine = null;
 
 
     // =========================================================
@@ -150,6 +172,53 @@ public class PlayFabManager : MonoBehaviour
     // =========================================================
     // PENDING GAME OVER
     // =========================================================
+    //
+    // WAŻNE:
+    // Game Over jest zapisywany lokalnie.
+    //
+    // Dzięki temu:
+    //
+    // 1. gra kończy się,
+    // 2. PlayFab chwilowo nie odpowiada,
+    // 3. dane trafiają do PlayerPrefs,
+    // 4. aplikacja może zostać zamknięta,
+    // 5. po kolejnym uruchomieniu dane zostaną ponowione.
+    //
+    // =========================================================
+
+    private const string PENDING_GAME_OVER_SAVE_KEY =
+        "PendingGameOverSave";
+
+    private const string PENDING_GAME_OVER_ENEMIES_KEY =
+        "PendingGameOverEnemiesKilled";
+
+    private const string PENDING_GAME_OVER_DAMAGE_KEY =
+        "PendingGameOverDamageDealt";
+
+    private const string PENDING_GAME_OVER_WAVE_KEY =
+        "PendingGameOverHighestWave";
+
+    private const string PENDING_GAME_OVER_GOLD_KEY =
+        "PendingGameOverGoldEarned";
+
+    private const string PENDING_GAME_OVER_DURATION_KEY =
+        "PendingGameOverGameDuration";
+
+    private const string PENDING_GAME_OVER_SKILLS_KEY =
+        "PendingGameOverSkillsPurchased";
+
+    private const string PENDING_GAME_OVER_UPGRADES_KEY =
+        "PendingGameOverUpgradesPurchased";
+
+    private const string PENDING_GAME_OVER_BUILD_SKILLS_KEY =
+        "PendingGameOverBuildSkills";
+
+    private const string PENDING_GAME_OVER_BUILD_UPGRADES_KEY =
+        "PendingGameOverBuildUpgrades";
+
+    private const string PENDING_GAME_OVER_BUILD_SUMMARY_KEY =
+        "PendingGameOverBuildSummary";
+
 
     private bool pendingGameOverStats = false;
 
@@ -169,6 +238,8 @@ public class PlayFabManager : MonoBehaviour
 
     private Action<bool> pendingGameOverStatsCallback = null;
 
+    private bool gameOverSaveInProgress = false;
+
 
     // =========================================================
     // UNITY
@@ -186,11 +257,42 @@ public class PlayFabManager : MonoBehaviour
 
         transform.SetParent(null);
         DontDestroyOnLoad(gameObject);
+
+        LoadPendingLeaderboardSave();
+        LoadPendingGameOverSave();
     }
+
 
     private void Start()
     {
         Login();
+
+        StartLeaderboardRetryCoroutine();
+
+        StartGameOverRetryCoroutine();
+    }
+
+
+    private void OnApplicationPause(bool pauseStatus)
+    {
+        if (pauseStatus)
+        {
+            /*
+             * Android może zatrzymać aplikację bez wywołania
+             * dalszej części logiki gry.
+             *
+             * Dlatego zapisujemy OBA pendingi.
+             */
+            SavePendingLeaderboardToPlayerPrefs();
+            SavePendingGameOverToPlayerPrefs();
+        }
+    }
+
+
+    private void OnApplicationQuit()
+    {
+        SavePendingLeaderboardToPlayerPrefs();
+        SavePendingGameOverToPlayerPrefs();
     }
 
 
@@ -207,6 +309,8 @@ public class PlayFabManager : MonoBehaviour
         EntityType = "";
         EntityToken = "";
 
+        entityTokenRequestInProgress = false;
+
         GameAccessChecked = false;
         IsGameEnabled = false;
 
@@ -220,6 +324,7 @@ public class PlayFabManager : MonoBehaviour
         PlayerNameChangeUsed = false;
 
         PlayerXP = 0.0;
+
         PlayerLevel =
             Mathf.Max(
                 1,
@@ -228,6 +333,7 @@ public class PlayFabManager : MonoBehaviour
 
         TalentPoints = 0;
         ForgetPoints = STARTING_FORGET_POINTS;
+
         IsTalentPointsLoaded = false;
         IsTalentProgressLoaded = false;
 
@@ -235,7 +341,14 @@ public class PlayFabManager : MonoBehaviour
 
         loadedTalentLevels.Clear();
 
-        pendingLeaderboardSave = false;
+        /*
+         * Nie kasujemy pendingów.
+         *
+         * Jeżeli dane oczekują z poprzedniej sesji,
+         * muszą zostać zachowane.
+         */
+        LoadPendingLeaderboardSave();
+        LoadPendingGameOverSave();
 
         string customId =
             GetOrCreateLocalPlayerId();
@@ -307,14 +420,28 @@ public class PlayFabManager : MonoBehaviour
         else
             LoadPlayerData();
 
-        // Najpierw progresja.
-        // Dopiero po jej wczytaniu wczytujemy TalentProgress.
         LoadPlayerProgression();
 
         CheckGameAccess();
 
+        /*
+         * Najważniejsze:
+         * pending Game Over może pochodzić z poprzedniego
+         * uruchomienia aplikacji.
+         */
         if (pendingGameOverStats)
+        {
+            Debug.Log(
+                "[PlayFabManager] Wykryto oczekujący Game Over. " +
+                "Rozpoczynam próbę zapisu."
+            );
+
             SavePendingGameOverStats();
+        }
+
+        StartLeaderboardRetryCoroutine();
+
+        StartGameOverRetryCoroutine();
     }
 
 
@@ -333,6 +460,18 @@ public class PlayFabManager : MonoBehaviour
 
             return;
         }
+
+        if (entityTokenRequestInProgress)
+            return;
+
+        if (IsEntityLoggedIn &&
+            PlayFabSettings.staticPlayer != null &&
+            PlayFabSettings.staticPlayer.IsEntityLoggedIn())
+        {
+            return;
+        }
+
+        entityTokenRequestInProgress = true;
 
         authenticationAPI =
             new PlayFabAuthenticationInstanceAPI(
@@ -353,6 +492,8 @@ public class PlayFabManager : MonoBehaviour
     private void OnEntityTokenReceived(
         GetEntityTokenResponse result)
     {
+        entityTokenRequestInProgress = false;
+
         if (result == null)
         {
             OnEntityTokenFailed(
@@ -427,22 +568,10 @@ public class PlayFabManager : MonoBehaviour
 
         if (pendingLeaderboardSave)
         {
-            int wave =
-                pendingLeaderboardHighestWave;
+            StartLeaderboardRetryCoroutine();
 
-            double damage =
-                pendingLeaderboardDamage;
-
-            int kills =
-                pendingLeaderboardEnemiesKilled;
-
-            pendingLeaderboardSave = false;
-
-            SaveLeaderboardScore(
-                wave,
-                damage,
-                kills
-            );
+            if (!leaderboardSaveInProgress)
+                TryProcessPendingLeaderboardSave();
         }
     }
 
@@ -450,6 +579,8 @@ public class PlayFabManager : MonoBehaviour
     private void OnEntityTokenFailed(
         PlayFabError error)
     {
+        entityTokenRequestInProgress = false;
+
         IsEntityLoggedIn = false;
 
         EntityToken = "";
@@ -461,6 +592,8 @@ public class PlayFabManager : MonoBehaviour
             "Entity Token: " +
             GetPlayFabErrorText(error)
         );
+
+        StartLeaderboardRetryCoroutine();
     }
 
 
@@ -473,6 +606,8 @@ public class PlayFabManager : MonoBehaviour
     {
         IsLoggedIn = false;
         IsEntityLoggedIn = false;
+
+        entityTokenRequestInProgress = false;
 
         EntityToken = "";
         EntityId = "";
@@ -493,6 +628,343 @@ public class PlayFabManager : MonoBehaviour
         Debug.LogError(
             "[PlayFabManager] Logowanie nieudane: " +
             GetPlayFabErrorText(error)
+        );
+
+        SavePendingLeaderboardToPlayerPrefs();
+        SavePendingGameOverToPlayerPrefs();
+    }
+
+
+    // =========================================================
+    // LEADERBOARD - PENDING SAVE
+    // =========================================================
+
+    private void LoadPendingLeaderboardSave()
+    {
+        bool hasPending =
+            PlayerPrefs.GetInt(
+                PENDING_LEADERBOARD_SAVE_KEY,
+                0
+            ) == 1;
+
+        if (!hasPending)
+        {
+            pendingLeaderboardSave = false;
+            pendingLeaderboardHighestWave = 0;
+            pendingLeaderboardDamage = 0.0;
+            pendingLeaderboardEnemiesKilled = 0;
+
+            return;
+        }
+
+        pendingLeaderboardSave = true;
+
+        pendingLeaderboardHighestWave =
+            Mathf.Max(
+                0,
+                PlayerPrefs.GetInt(
+                    PENDING_LEADERBOARD_WAVE_KEY,
+                    0
+                )
+            );
+
+        string damageString =
+            PlayerPrefs.GetString(
+                PENDING_LEADERBOARD_DAMAGE_KEY,
+                "0"
+            );
+
+        if (!double.TryParse(
+            damageString,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out pendingLeaderboardDamage))
+        {
+            pendingLeaderboardDamage = 0.0;
+        }
+
+        if (double.IsNaN(
+            pendingLeaderboardDamage) ||
+            double.IsInfinity(
+                pendingLeaderboardDamage) ||
+            pendingLeaderboardDamage < 0.0)
+        {
+            pendingLeaderboardDamage = 0.0;
+        }
+
+        pendingLeaderboardEnemiesKilled =
+            Mathf.Max(
+                0,
+                PlayerPrefs.GetInt(
+                    PENDING_LEADERBOARD_KILLS_KEY,
+                    0
+                )
+            );
+
+        Debug.Log(
+            "[PlayFabManager] Wczytano oczekujący leaderboard. " +
+            "Wave: " +
+            pendingLeaderboardHighestWave +
+            ", Damage: " +
+            pendingLeaderboardDamage +
+            ", Kills: " +
+            pendingLeaderboardEnemiesKilled
+        );
+    }
+
+
+    private void SavePendingLeaderboardToPlayerPrefs()
+    {
+        if (!pendingLeaderboardSave)
+        {
+            PlayerPrefs.DeleteKey(
+                PENDING_LEADERBOARD_SAVE_KEY
+            );
+
+            PlayerPrefs.DeleteKey(
+                PENDING_LEADERBOARD_WAVE_KEY
+            );
+
+            PlayerPrefs.DeleteKey(
+                PENDING_LEADERBOARD_DAMAGE_KEY
+            );
+
+            PlayerPrefs.DeleteKey(
+                PENDING_LEADERBOARD_KILLS_KEY
+            );
+
+            PlayerPrefs.Save();
+
+            return;
+        }
+
+        PlayerPrefs.SetInt(
+            PENDING_LEADERBOARD_SAVE_KEY,
+            1
+        );
+
+        PlayerPrefs.SetInt(
+            PENDING_LEADERBOARD_WAVE_KEY,
+            Mathf.Max(
+                0,
+                pendingLeaderboardHighestWave
+            )
+        );
+
+        PlayerPrefs.SetString(
+            PENDING_LEADERBOARD_DAMAGE_KEY,
+            Math.Max(
+                0.0,
+                pendingLeaderboardDamage
+            ).ToString(
+                CultureInfo.InvariantCulture
+            )
+        );
+
+        PlayerPrefs.SetInt(
+            PENDING_LEADERBOARD_KILLS_KEY,
+            Mathf.Max(
+                0,
+                pendingLeaderboardEnemiesKilled
+            )
+        );
+
+        PlayerPrefs.Save();
+    }
+
+
+    private void SetPendingLeaderboardSave(
+        int highestWave,
+        double damageDealt,
+        int enemiesKilled)
+    {
+        highestWave =
+            Mathf.Max(
+                0,
+                highestWave
+            );
+
+        enemiesKilled =
+            Mathf.Max(
+                0,
+                enemiesKilled
+            );
+
+        if (double.IsNaN(damageDealt) ||
+            double.IsInfinity(damageDealt) ||
+            damageDealt < 0.0)
+        {
+            damageDealt = 0.0;
+        }
+
+        if (pendingLeaderboardSave)
+        {
+            bool newScoreIsBetter =
+                IsLeaderboardScoreBetter(
+                    highestWave,
+                    damageDealt,
+                    enemiesKilled,
+                    pendingLeaderboardHighestWave,
+                    pendingLeaderboardDamage,
+                    pendingLeaderboardEnemiesKilled
+                );
+
+            if (!newScoreIsBetter)
+            {
+                SavePendingLeaderboardToPlayerPrefs();
+                return;
+            }
+        }
+
+        pendingLeaderboardSave = true;
+
+        pendingLeaderboardHighestWave =
+            highestWave;
+
+        pendingLeaderboardDamage =
+            damageDealt;
+
+        pendingLeaderboardEnemiesKilled =
+            enemiesKilled;
+
+        SavePendingLeaderboardToPlayerPrefs();
+
+        Debug.Log(
+            "[PlayFabManager] Ustawiono oczekujący leaderboard. " +
+            "Wave: " +
+            highestWave +
+            ", Damage: " +
+            damageDealt +
+            ", Kills: " +
+            enemiesKilled
+        );
+
+        StartLeaderboardRetryCoroutine();
+    }
+
+
+    private void ClearPendingLeaderboardSave()
+    {
+        pendingLeaderboardSave = false;
+
+        pendingLeaderboardHighestWave = 0;
+        pendingLeaderboardDamage = 0.0;
+        pendingLeaderboardEnemiesKilled = 0;
+
+        PlayerPrefs.DeleteKey(
+            PENDING_LEADERBOARD_SAVE_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_LEADERBOARD_WAVE_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_LEADERBOARD_DAMAGE_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_LEADERBOARD_KILLS_KEY
+        );
+
+        PlayerPrefs.Save();
+
+        Debug.Log(
+            "[PlayFabManager] Oczekujący leaderboard został " +
+            "potwierdzony przez PlayFab i usunięty lokalnie."
+        );
+    }
+
+
+    private void StartLeaderboardRetryCoroutine()
+    {
+        if (!pendingLeaderboardSave)
+            return;
+
+        if (leaderboardRetryCoroutine != null)
+            return;
+
+        leaderboardRetryCoroutine =
+            StartCoroutine(
+                LeaderboardRetryCoroutine()
+            );
+    }
+
+
+    private IEnumerator LeaderboardRetryCoroutine()
+    {
+        while (pendingLeaderboardSave)
+        {
+            if (IsLoggedIn &&
+                !IsEntityLoggedIn &&
+                !entityTokenRequestInProgress)
+            {
+                GetEntityToken();
+            }
+
+            if (IsLoggedIn &&
+                IsEntityLoggedIn &&
+                PlayFabSettings.staticPlayer != null &&
+                PlayFabSettings.staticPlayer.IsEntityLoggedIn() &&
+                !leaderboardSaveInProgress)
+            {
+                TryProcessPendingLeaderboardSave();
+            }
+
+            yield return new WaitForSecondsRealtime(
+                LEADERBOARD_RETRY_INTERVAL
+            );
+        }
+
+        leaderboardRetryCoroutine = null;
+    }
+
+
+    private void TryProcessPendingLeaderboardSave()
+    {
+        if (!pendingLeaderboardSave)
+            return;
+
+        if (!IsLoggedIn)
+            return;
+
+        if (!IsEntityLoggedIn ||
+            PlayFabSettings.staticPlayer == null ||
+            !PlayFabSettings.staticPlayer.IsEntityLoggedIn())
+        {
+            return;
+        }
+
+        if (leaderboardSaveInProgress)
+            return;
+
+        if (string.IsNullOrWhiteSpace(
+            leaderboardName))
+        {
+            Debug.LogError(
+                "[PlayFabManager] Nazwa leaderboardu jest pusta."
+            );
+
+            return;
+        }
+
+        if (string.IsNullOrEmpty(
+            PlayFabId))
+        {
+            Debug.LogError(
+                "[PlayFabManager] Brak PlayFabId - " +
+                "nie można zapisać leaderboardu."
+            );
+
+            return;
+        }
+
+        leaderboardSaveInProgress = true;
+
+        ProcessLeaderboardSave(
+            pendingLeaderboardHighestWave,
+            pendingLeaderboardDamage,
+            pendingLeaderboardEnemiesKilled
         );
     }
 
@@ -1269,10 +1741,6 @@ public class PlayFabManager : MonoBehaviour
         int loadedPoints = 0;
         int loadedForgetPoints = STARTING_FORGET_POINTS;
 
-        // =====================================================
-        // 1. NOWY SYSTEM
-        // =====================================================
-
         if (result != null &&
             result.Data != null &&
             result.Data.ContainsKey(
@@ -1309,9 +1777,6 @@ public class PlayFabManager : MonoBehaviour
                                 saveData.forgetPoints
                             );
 
-                        // Jeżeli nowy klucz ForgetPoints nie istnieje
-                        // na starszym koncie, przyznajemy jednorazowo
-                        // początkowe 10 Punktów Zapomnienia.
                         if (result.Data == null ||
                             !result.Data.ContainsKey(
                                 PLAYER_FORGET_POINTS_KEY))
@@ -1361,10 +1826,6 @@ public class PlayFabManager : MonoBehaviour
             }
         }
 
-        // =====================================================
-        // 2. STARY SYSTEM - MIGRACJA
-        // =====================================================
-
         if (!loadedUnifiedProgress)
         {
             loadedPoints =
@@ -1381,9 +1842,6 @@ public class PlayFabManager : MonoBehaviour
                 result
             );
 
-            // Stary DamageTalentLevel.
-            // Jeżeli nie istnieje już Talent_damage_all,
-            // wykorzystujemy stare dane.
             if (!loadedTalentLevels.ContainsKey(
                 "damage_all"))
             {
@@ -1401,8 +1859,6 @@ public class PlayFabManager : MonoBehaviour
                 }
             }
 
-            // Jeżeli konto nie miało TalentPoints,
-            // przyznajemy punkty za zdobyte wcześniej poziomy.
             bool hadLegacyPoints =
                 HasLegacyTalentPoints(
                     result
@@ -1421,11 +1877,6 @@ public class PlayFabManager : MonoBehaviour
                     levelsAlreadyEarned *
                     TALENT_POINTS_PER_LEVEL;
             }
-
-            Debug.Log(
-                "[PlayFabManager] Wykryto stare dane talentów. " +
-                "Rozpoczynam migrację do TalentProgress."
-            );
 
             SaveTalentProgressSnapshot(
                 loadedPoints,
@@ -1453,10 +1904,6 @@ public class PlayFabManager : MonoBehaviour
 
         if (needsForgetPointsMigration)
         {
-            // Starsze konta posiadają już TalentProgress, ale nie
-            // mają jeszcze Punktów Zapomnienia. Przyznajemy 10
-            // punktów startowych i od razu zapisujemy je do PlayFab,
-            // aby nie zostały przyznane ponownie przy kolejnym logowaniu.
             SaveTalentProgressSnapshot(
                 loadedPoints,
                 loadedTalentLevels,
@@ -1481,25 +1928,27 @@ public class PlayFabManager : MonoBehaviour
         );
     }
 
-private void OnTalentProgressDataFailed(
-    PlayFabError error)
-{
-    talentProgressLoadInProgress = false;
 
-    IsTalentProgressLoaded = false;
-    IsTalentPointsLoaded = false;
+    private void OnTalentProgressDataFailed(
+        PlayFabError error)
+    {
+        talentProgressLoadInProgress = false;
 
-    TalentPoints = 0;
-    ForgetPoints = STARTING_FORGET_POINTS;
+        IsTalentProgressLoaded = false;
+        IsTalentPointsLoaded = false;
 
-    loadedTalentLevels.Clear();
+        TalentPoints = 0;
+        ForgetPoints = STARTING_FORGET_POINTS;
 
-    Debug.LogWarning(
-        "[PlayFabManager] Nie udało się wczytać " +
-        "progresji talentów: " +
-        GetPlayFabErrorText(error)
-    );
-}
+        loadedTalentLevels.Clear();
+
+        Debug.LogWarning(
+            "[PlayFabManager] Nie udało się wczytać " +
+            "progresji talentów: " +
+            GetPlayFabErrorText(error)
+        );
+    }
+
 
     private void FinishTalentProgressLoading(
         int points,
@@ -1826,17 +2275,9 @@ private void OnTalentProgressDataFailed(
                     PLAYER_TALENT_PROGRESS_KEY,
                     json
                 },
-
-                // Zachowujemy stary klucz również podczas
-                // migracji, aby starsze wersje gry nie utraciły
-                // informacji o punktach.
                 {
                     PLAYER_TALENT_POINTS_KEY,
                     points.ToString()
-                },
-                {
-                    PLAYER_FORGET_POINTS_KEY,
-                    ForgetPoints.ToString()
                 },
                 {
                     PLAYER_FORGET_POINTS_KEY,
@@ -1868,7 +2309,7 @@ private void OnTalentProgressDataFailed(
 
 
     // =========================================================
-    // ZAKUP TALENTU - ATOMICZNY ZAPIS
+    // ZAKUP TALENTU
     // =========================================================
 
     public void SaveTalentProgress(
@@ -1912,9 +2353,6 @@ private void OnTalentProgressDataFailed(
                 newTalentPoints
             );
 
-        // Kopia istniejących danych.
-        // Dzięki temu talentów, których nie znamy w aktualnej
-        // wersji gry, nie usuniemy przypadkiem z PlayFab.
         Dictionary<string, int> newLevels =
             new Dictionary<string, int>(
                 loadedTalentLevels
@@ -1937,8 +2375,6 @@ private void OnTalentProgressDataFailed(
                     PLAYER_TALENT_PROGRESS_KEY,
                     json
                 },
-
-                // Zachowujemy również stary klucz.
                 {
                     PLAYER_TALENT_POINTS_KEY,
                     newTalentPoints.ToString()
@@ -1984,7 +2420,7 @@ private void OnTalentProgressDataFailed(
 
 
     // =========================================================
-    // RESET TALENTU - ATOMICZNY ZAPIS
+    // RESET TALENTU
     // =========================================================
 
     public void SaveTalentResetProgress(
@@ -2557,9 +2993,6 @@ private void OnTalentProgressDataFailed(
         {
             IsProgressionLoaded = true;
 
-            // Dopiero teraz mamy pewny PlayerLevel,
-            // więc możemy bezpiecznie migrować stare
-            // punkty talentów.
             LoadTalentProgress();
         }
     }
@@ -2583,7 +3016,6 @@ private void OnTalentProgressDataFailed(
             GetPlayFabErrorText(error)
         );
 
-        // Nadal próbujemy wczytać talenty.
         LoadTalentProgress();
     }
 
@@ -2930,10 +3362,6 @@ private void OnTalentProgressDataFailed(
 
         IsProgressionLoaded = true;
 
-        // =====================================================
-        // Aktualizujemy lokalny snapshot talentów.
-        // =====================================================
-
         Dictionary<string, int> talentSnapshot =
             new Dictionary<string, int>(
                 loadedTalentLevels
@@ -3211,14 +3639,371 @@ private void OnTalentProgressDataFailed(
 
 
     // =========================================================
-    // GAME OVER
+    // GAME OVER - PENDING LOCAL
     // =========================================================
 
-    public void BeginNewGameSession()
+    private void LoadPendingGameOverSave()
     {
-        gameOverStatsSaved = false;
+        bool hasPending =
+            PlayerPrefs.GetInt(
+                PENDING_GAME_OVER_SAVE_KEY,
+                0
+            ) == 1;
+
+        if (!hasPending)
+        {
+            pendingGameOverStats = false;
+
+            pendingEnemiesKilled = 0;
+            pendingDamageDealt = 0.0;
+            pendingHighestWave = 0;
+            pendingGoldEarned = 0;
+            pendingGameDuration = 0;
+            pendingSkillsPurchased = 0;
+            pendingUpgradesPurchased = 0;
+
+            pendingBuildSkills = "";
+            pendingBuildUpgrades = "";
+            pendingBuildSummary = "";
+
+            return;
+        }
+
+        pendingGameOverStats = true;
+
+        pendingEnemiesKilled =
+            Mathf.Max(
+                0,
+                PlayerPrefs.GetInt(
+                    PENDING_GAME_OVER_ENEMIES_KEY,
+                    0
+                )
+            );
+
+        string damageString =
+            PlayerPrefs.GetString(
+                PENDING_GAME_OVER_DAMAGE_KEY,
+                "0"
+            );
+
+        if (!double.TryParse(
+            damageString,
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out pendingDamageDealt))
+        {
+            pendingDamageDealt = 0.0;
+        }
+
+        if (double.IsNaN(pendingDamageDealt) ||
+            double.IsInfinity(pendingDamageDealt) ||
+            pendingDamageDealt < 0.0)
+        {
+            pendingDamageDealt = 0.0;
+        }
+
+        pendingHighestWave =
+            Mathf.Max(
+                0,
+                PlayerPrefs.GetInt(
+                    PENDING_GAME_OVER_WAVE_KEY,
+                    0
+                )
+            );
+
+        pendingGoldEarned =
+            Mathf.Max(
+                0,
+                PlayerPrefs.GetInt(
+                    PENDING_GAME_OVER_GOLD_KEY,
+                    0
+                )
+            );
+
+        pendingGameDuration =
+            Mathf.Max(
+                0,
+                PlayerPrefs.GetInt(
+                    PENDING_GAME_OVER_DURATION_KEY,
+                    0
+                )
+            );
+
+        pendingSkillsPurchased =
+            Mathf.Max(
+                0,
+                PlayerPrefs.GetInt(
+                    PENDING_GAME_OVER_SKILLS_KEY,
+                    0
+                )
+            );
+
+        pendingUpgradesPurchased =
+            Mathf.Max(
+                0,
+                PlayerPrefs.GetInt(
+                    PENDING_GAME_OVER_UPGRADES_KEY,
+                    0
+                )
+            );
+
+        pendingBuildSkills =
+            PlayerPrefs.GetString(
+                PENDING_GAME_OVER_BUILD_SKILLS_KEY,
+                ""
+            );
+
+        pendingBuildUpgrades =
+            PlayerPrefs.GetString(
+                PENDING_GAME_OVER_BUILD_UPGRADES_KEY,
+                ""
+            );
+
+        pendingBuildSummary =
+            PlayerPrefs.GetString(
+                PENDING_GAME_OVER_BUILD_SUMMARY_KEY,
+                ""
+            );
+
+        Debug.Log(
+            "[PlayFabManager] Wczytano pending Game Over. " +
+            "Wave: " +
+            pendingHighestWave +
+            ", Kills: " +
+            pendingEnemiesKilled +
+            ", Damage: " +
+            pendingDamageDealt +
+            ", Gold: " +
+            pendingGoldEarned
+        );
+    }
+
+
+    private void SavePendingGameOverToPlayerPrefs()
+    {
+        if (!pendingGameOverStats)
+        {
+            ClearPendingGameOverPlayerPrefs();
+
+            return;
+        }
+
+        PlayerPrefs.SetInt(
+            PENDING_GAME_OVER_SAVE_KEY,
+            1
+        );
+
+        PlayerPrefs.SetInt(
+            PENDING_GAME_OVER_ENEMIES_KEY,
+            Mathf.Max(
+                0,
+                pendingEnemiesKilled
+            )
+        );
+
+        PlayerPrefs.SetString(
+            PENDING_GAME_OVER_DAMAGE_KEY,
+            Math.Max(
+                0.0,
+                pendingDamageDealt
+            ).ToString(
+                CultureInfo.InvariantCulture
+            )
+        );
+
+        PlayerPrefs.SetInt(
+            PENDING_GAME_OVER_WAVE_KEY,
+            Mathf.Max(
+                0,
+                pendingHighestWave
+            )
+        );
+
+        PlayerPrefs.SetInt(
+            PENDING_GAME_OVER_GOLD_KEY,
+            Mathf.Max(
+                0,
+                pendingGoldEarned
+            )
+        );
+
+        PlayerPrefs.SetInt(
+            PENDING_GAME_OVER_DURATION_KEY,
+            Mathf.Max(
+                0,
+                pendingGameDuration
+            )
+        );
+
+        PlayerPrefs.SetInt(
+            PENDING_GAME_OVER_SKILLS_KEY,
+            Mathf.Max(
+                0,
+                pendingSkillsPurchased
+            )
+        );
+
+        PlayerPrefs.SetInt(
+            PENDING_GAME_OVER_UPGRADES_KEY,
+            Mathf.Max(
+                0,
+                pendingUpgradesPurchased
+            )
+        );
+
+        PlayerPrefs.SetString(
+            PENDING_GAME_OVER_BUILD_SKILLS_KEY,
+            pendingBuildSkills ?? ""
+        );
+
+        PlayerPrefs.SetString(
+            PENDING_GAME_OVER_BUILD_UPGRADES_KEY,
+            pendingBuildUpgrades ?? ""
+        );
+
+        PlayerPrefs.SetString(
+            PENDING_GAME_OVER_BUILD_SUMMARY_KEY,
+            pendingBuildSummary ?? ""
+        );
+
+        PlayerPrefs.Save();
+
+        Debug.Log(
+            "[PlayFabManager] Pending Game Over zapisany lokalnie."
+        );
+    }
+
+
+    private void ClearPendingGameOverPlayerPrefs()
+    {
+        PlayerPrefs.DeleteKey(
+            PENDING_GAME_OVER_SAVE_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAME_OVER_ENEMIES_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAME_OVER_DAMAGE_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAME_OVER_WAVE_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAME_OVER_GOLD_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAME_OVER_DURATION_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAME_OVER_SKILLS_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAME_OVER_UPGRADES_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAME_OVER_BUILD_SKILLS_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAME_OVER_BUILD_UPGRADES_KEY
+        );
+
+        PlayerPrefs.DeleteKey(
+            PENDING_GAME_OVER_BUILD_SUMMARY_KEY
+        );
+
+        PlayerPrefs.Save();
+    }
+
+
+    private void SetPendingGameOverStats(
+        int enemiesKilled,
+        double damageDealt,
+        int highestWave,
+        int goldEarned,
+        int gameDuration,
+        int skillsPurchased,
+        int upgradesPurchased,
+        string buildSkills,
+        string buildUpgrades,
+        string buildSummary,
+        Action<bool> callback)
+    {
+        pendingGameOverStats = true;
+
+        pendingGameOverStatsCallback =
+            callback;
+
+        pendingEnemiesKilled =
+            Mathf.Max(
+                0,
+                enemiesKilled
+            );
+
+        if (double.IsNaN(damageDealt) ||
+            double.IsInfinity(damageDealt) ||
+            damageDealt < 0.0)
+        {
+            damageDealt = 0.0;
+        }
+
+        pendingDamageDealt =
+            damageDealt;
+
+        pendingHighestWave =
+            Mathf.Max(
+                0,
+                highestWave
+            );
+
+        pendingGoldEarned =
+            Mathf.Max(
+                0,
+                goldEarned
+            );
+
+        pendingGameDuration =
+            Mathf.Max(
+                0,
+                gameDuration
+            );
+
+        pendingSkillsPurchased =
+            Mathf.Max(
+                0,
+                skillsPurchased
+            );
+
+        pendingUpgradesPurchased =
+            Mathf.Max(
+                0,
+                upgradesPurchased
+            );
+
+        pendingBuildSkills =
+            buildSkills ?? "";
+
+        pendingBuildUpgrades =
+            buildUpgrades ?? "";
+
+        pendingBuildSummary =
+            buildSummary ?? "";
+
+        SavePendingGameOverToPlayerPrefs();
+    }
+
+
+    private void ClearPendingGameOverStats()
+    {
         pendingGameOverStats = false;
-        pendingGameOverStatsCallback = null;
 
         pendingEnemiesKilled = 0;
         pendingDamageDealt = 0.0;
@@ -3231,6 +4016,78 @@ private void OnTalentProgressDataFailed(
         pendingBuildSkills = "";
         pendingBuildUpgrades = "";
         pendingBuildSummary = "";
+
+        pendingGameOverStatsCallback = null;
+
+        ClearPendingGameOverPlayerPrefs();
+
+        Debug.Log(
+            "[PlayFabManager] Pending Game Over został " +
+            "potwierdzony i usunięty lokalnie."
+        );
+    }
+
+
+    private void StartGameOverRetryCoroutine()
+    {
+        if (!pendingGameOverStats)
+            return;
+
+        StartCoroutine(
+            GameOverRetryCoroutine()
+        );
+    }
+
+
+    private IEnumerator GameOverRetryCoroutine()
+    {
+        /*
+         * Ten coroutine jest celowo prosty.
+         *
+         * Jeżeli Game Over nie został zapisany,
+         * co kilka sekund sprawdzamy logowanie i ponawiamy.
+         */
+        while (pendingGameOverStats)
+        {
+            if (IsLoggedIn &&
+                !gameOverSaveInProgress)
+            {
+                SavePendingGameOverStats();
+            }
+
+            yield return new WaitForSecondsRealtime(
+                LEADERBOARD_RETRY_INTERVAL
+            );
+        }
+    }
+
+
+    // =========================================================
+    // GAME OVER
+    // =========================================================
+
+    public void BeginNewGameSession()
+    {
+        gameOverStatsSaved = false;
+
+        /*
+         * WAŻNE:
+         *
+         * NIE kasujemy tutaj pendingGameOverStats.
+         *
+         * Jeżeli poprzednia gra nie zdążyła się zapisać,
+         * jej dane muszą przeżyć rozpoczęcie nowej sesji.
+         */
+        pendingGameOverStatsCallback = null;
+
+        /*
+         * Nie kasujemy pendingLeaderboardSave.
+         */
+
+        Debug.Log(
+            "[PlayFabManager] Rozpoczęto nową sesję gry. " +
+            "Oczekujące zapisy PlayFab zostały zachowane."
+        );
     }
 
 
@@ -3244,8 +4101,11 @@ private void OnTalentProgressDataFailed(
         int upgradesPurchased,
         Action<bool> callback = null)
     {
-        if (enemiesKilled < 0)
-            enemiesKilled = 0;
+        enemiesKilled =
+            Mathf.Max(
+                0,
+                enemiesKilled
+            );
 
         if (double.IsNaN(damageDealt) ||
             double.IsInfinity(damageDealt) ||
@@ -3254,23 +4114,40 @@ private void OnTalentProgressDataFailed(
             damageDealt = 0.0;
         }
 
-        if (highestWave < 0)
-            highestWave = 0;
+        highestWave =
+            Mathf.Max(
+                0,
+                highestWave
+            );
 
-        if (goldEarned < 0)
-            goldEarned = 0;
+        goldEarned =
+            Mathf.Max(
+                0,
+                goldEarned
+            );
 
-        if (gameDuration < 0)
-            gameDuration = 0;
+        gameDuration =
+            Mathf.Max(
+                0,
+                gameDuration
+            );
 
-        if (skillsPurchased < 0)
-            skillsPurchased = 0;
+        skillsPurchased =
+            Mathf.Max(
+                0,
+                skillsPurchased
+            );
 
-        if (upgradesPurchased < 0)
-            upgradesPurchased = 0;
+        upgradesPurchased =
+            Mathf.Max(
+                0,
+                upgradesPurchased
+            );
 
         if (gameOverStatsSaved)
-            BeginNewGameSession();
+        {
+            gameOverStatsSaved = false;
+        }
 
         string buildSkills = "";
         string buildUpgrades = "";
@@ -3291,46 +4168,16 @@ private void OnTalentProgressDataFailed(
                     .GetBuildSummary();
         }
 
-        if (!IsLoggedIn)
-        {
-            pendingGameOverStats = true;
-            pendingGameOverStatsCallback =
-                callback;
-
-            pendingEnemiesKilled =
-                enemiesKilled;
-
-            pendingDamageDealt =
-                damageDealt;
-
-            pendingHighestWave =
-                highestWave;
-
-            pendingGoldEarned =
-                goldEarned;
-
-            pendingGameDuration =
-                gameDuration;
-
-            pendingSkillsPurchased =
-                skillsPurchased;
-
-            pendingUpgradesPurchased =
-                upgradesPurchased;
-
-            pendingBuildSkills =
-                buildSkills;
-
-            pendingBuildUpgrades =
-                buildUpgrades;
-
-            pendingBuildSummary =
-                buildSummary;
-
-            return;
-        }
-
-        SendGameOverStats(
+        /*
+         * ZAWSZE najpierw zapisujemy lokalny pending.
+         *
+         * Nawet gdy jesteśmy zalogowani.
+         *
+         * Dzięki temu jeżeli aplikacja zostanie zabita
+         * dokładnie podczas requestu PlayFab,
+         * dane nadal istnieją.
+         */
+        SetPendingGameOverStats(
             enemiesKilled,
             damageDealt,
             highestWave,
@@ -3343,6 +4190,18 @@ private void OnTalentProgressDataFailed(
             buildSummary,
             callback
         );
+
+        if (!IsLoggedIn)
+        {
+            Debug.LogWarning(
+                "[PlayFabManager] Gracz nie jest zalogowany. " +
+                "Game Over zapisany lokalnie i zostanie ponowiony."
+            );
+
+            return;
+        }
+
+        SavePendingGameOverStats();
     }
 
 
@@ -3350,6 +4209,14 @@ private void OnTalentProgressDataFailed(
     {
         if (!pendingGameOverStats)
             return;
+
+        if (!IsLoggedIn)
+            return;
+
+        if (gameOverSaveInProgress)
+            return;
+
+        gameOverSaveInProgress = true;
 
         SendGameOverStats(
             pendingEnemiesKilled,
@@ -3362,7 +4229,39 @@ private void OnTalentProgressDataFailed(
             pendingBuildSkills,
             pendingBuildUpgrades,
             pendingBuildSummary,
-            pendingGameOverStatsCallback
+            success =>
+            {
+                gameOverSaveInProgress = false;
+
+                if (!success)
+                {
+                    /*
+                     * NIE kasujemy pending.
+                     *
+                     * Pozostaje w RAM + PlayerPrefs.
+                     */
+                    SavePendingGameOverToPlayerPrefs();
+
+                    Debug.LogWarning(
+                        "[PlayFabManager] Game Over nie został " +
+                        "zapisany. Dane pozostają oczekujące."
+                    );
+
+                    return;
+                }
+
+                /*
+                 * Dopiero po pełnym sukcesie usuwamy pending.
+                 */
+                Action<bool> originalCallback =
+                    pendingGameOverStatsCallback;
+
+                ClearPendingGameOverStats();
+
+                gameOverStatsSaved = true;
+
+                originalCallback?.Invoke(true);
+            }
         );
     }
 
@@ -3599,6 +4498,20 @@ private void OnTalentProgressDataFailed(
                     highestWave >
                     previousHighestWave;
 
+                Debug.Log(
+                    "[PlayFabManager] Zapisywanie Game Over. " +
+                    "Wave=" +
+                    highestWave +
+                    ", Kills=" +
+                    enemiesKilled +
+                    ", Damage=" +
+                    damageDealt +
+                    ", Gold=" +
+                    goldEarned +
+                    ", Duration=" +
+                    gameDuration
+                );
+
                 PlayFabClientAPI.UpdatePlayerStatistics(
                     new UpdatePlayerStatisticsRequest
                     {
@@ -3607,6 +4520,11 @@ private void OnTalentProgressDataFailed(
                     },
                     updateResult =>
                     {
+                        Debug.Log(
+                            "[PlayFabManager] PlayerStatistics " +
+                            "Game Over zapisane."
+                        );
+
                         Action<bool> finishSave =
                             success =>
                             {
@@ -3616,14 +4534,13 @@ private void OnTalentProgressDataFailed(
                                     return;
                                 }
 
-                                gameOverStatsSaved =
-                                    true;
-
-                                pendingGameOverStats =
-                                    false;
-
-                                pendingGameOverStatsCallback =
-                                    null;
+                                /*
+                                 * Tutaj NIE czyścimy pending.
+                                 *
+                                 * Pending jest czyszczony dopiero
+                                 * przez SavePendingGameOverStats()
+                                 * po otrzymaniu success=true.
+                                 */
 
                                 SaveLeaderboardScore(
                                     highestWave,
@@ -3654,12 +4571,24 @@ private void OnTalentProgressDataFailed(
                     },
                     error =>
                     {
+                        Debug.LogError(
+                            "[PlayFabManager] Nie udało się zapisać " +
+                            "PlayerStatistics Game Over: " +
+                            GetPlayFabErrorText(error)
+                        );
+
                         callback?.Invoke(false);
                     }
                 );
             },
             error =>
             {
+                Debug.LogError(
+                    "[PlayFabManager] Nie udało się pobrać " +
+                    "PlayerStatistics przed Game Over: " +
+                    GetPlayFabErrorText(error)
+                );
+
                 callback?.Invoke(false);
             }
         );
@@ -3674,6 +4603,13 @@ private void OnTalentProgressDataFailed(
         {
             callback?.Invoke(false);
             return;
+        }
+
+        if (double.IsNaN(damageDealt) ||
+            double.IsInfinity(damageDealt) ||
+            damageDealt < 0.0)
+        {
+            damageDealt = 0.0;
         }
 
         Dictionary<string, string> data =
@@ -3694,10 +4630,21 @@ private void OnTalentProgressDataFailed(
             },
             result =>
             {
+                Debug.Log(
+                    "[PlayFabManager] DamageDealt zapisane: " +
+                    damageDealt
+                );
+
                 callback?.Invoke(true);
             },
             error =>
             {
+                Debug.LogError(
+                    "[PlayFabManager] Nie udało się zapisać " +
+                    "DamageDealt: " +
+                    GetPlayFabErrorText(error)
+                );
+
                 callback?.Invoke(false);
             }
         );
@@ -3715,6 +4662,13 @@ private void OnTalentProgressDataFailed(
         {
             callback?.Invoke(false);
             return;
+        }
+
+        if (double.IsNaN(damageDealt) ||
+            double.IsInfinity(damageDealt) ||
+            damageDealt < 0.0)
+        {
+            damageDealt = 0.0;
         }
 
         Dictionary<string, string> data =
@@ -3750,10 +4704,21 @@ private void OnTalentProgressDataFailed(
             },
             result =>
             {
+                Debug.Log(
+                    "[PlayFabManager] Build + DamageDealt " +
+                    "zapisane w PlayFab."
+                );
+
                 callback?.Invoke(true);
             },
             error =>
             {
+                Debug.LogError(
+                    "[PlayFabManager] Nie udało się zapisać " +
+                    "BuildData: " +
+                    GetPlayFabErrorText(error)
+                );
+
                 callback?.Invoke(false);
             }
         );
@@ -3823,29 +4788,38 @@ private void OnTalentProgressDataFailed(
         double damageDealt,
         int enemiesKilled)
     {
+        SetPendingLeaderboardSave(
+            highestWave,
+            damageDealt,
+            enemiesKilled
+        );
+
+        if (IsLoggedIn &&
+            IsEntityLoggedIn &&
+            PlayFabSettings.staticPlayer != null &&
+            PlayFabSettings.staticPlayer.IsEntityLoggedIn())
+        {
+            TryProcessPendingLeaderboardSave();
+        }
+    }
+
+
+    private void ProcessLeaderboardSave(
+        int highestWave,
+        double damageDealt,
+        int enemiesKilled)
+    {
         if (!IsLoggedIn)
+        {
+            leaderboardSaveInProgress = false;
             return;
+        }
 
         if (!IsEntityLoggedIn ||
-            !PlayFabSettings.staticPlayer
-                .IsEntityLoggedIn())
+            PlayFabSettings.staticPlayer == null ||
+            !PlayFabSettings.staticPlayer.IsEntityLoggedIn())
         {
-            pendingLeaderboardSave = true;
-
-            pendingLeaderboardHighestWave =
-                highestWave;
-
-            pendingLeaderboardDamage =
-                damageDealt;
-
-            pendingLeaderboardEnemiesKilled =
-                enemiesKilled;
-
-            Debug.Log(
-                "[PlayFabManager] Entity Token nie jest jeszcze " +
-                "gotowy. Wynik leaderboardu oczekuje na token."
-            );
-
+            leaderboardSaveInProgress = false;
             return;
         }
 
@@ -3856,6 +4830,7 @@ private void OnTalentProgressDataFailed(
                 "[PlayFabManager] Nazwa leaderboardu jest pusta."
             );
 
+            leaderboardSaveInProgress = false;
             return;
         }
 
@@ -3867,6 +4842,7 @@ private void OnTalentProgressDataFailed(
                 "nie można zapisać leaderboardu."
             );
 
+            leaderboardSaveInProgress = false;
             return;
         }
 
@@ -3896,14 +4872,51 @@ private void OnTalentProgressDataFailed(
             );
 
         PlayFabProgressionGetMyEntry(
-            currentEntry =>
+            (success, currentEntry) =>
             {
+                if (!success)
+                {
+                    Debug.LogWarning(
+                        "[PlayFabManager] Nie udało się sprawdzić " +
+                        "obecnego wyniku leaderboardu. " +
+                        "Zapis zostanie ponowiony."
+                    );
+
+                    leaderboardSaveInProgress = false;
+
+                    StartLeaderboardRetryCoroutine();
+
+                    return;
+                }
+
                 if (currentEntry == null)
                 {
                     UpdateLeaderboardScore(
                         highestWave,
                         damageScore,
-                        enemiesKilled
+                        enemiesKilled,
+                        success =>
+                        {
+                            leaderboardSaveInProgress = false;
+
+                            if (!success)
+                            {
+                                StartLeaderboardRetryCoroutine();
+                                return;
+                            }
+
+                            if (PendingLeaderboardMatches(
+                                highestWave,
+                                damageScore,
+                                enemiesKilled))
+                            {
+                                ClearPendingLeaderboardSave();
+                            }
+                            else
+                            {
+                                SavePendingLeaderboardToPlayerPrefs();
+                            }
+                        }
                     );
 
                     return;
@@ -3933,10 +4946,23 @@ private void OnTalentProgressDataFailed(
 
                 if (!newScoreIsBetter)
                 {
-                    UpdateLeaderboardScore(
-                        oldWave,
-                        oldDamage,
-                        oldKills
+                    leaderboardSaveInProgress = false;
+
+                    if (PendingLeaderboardMatches(
+                        highestWave,
+                        damageScore,
+                        enemiesKilled))
+                    {
+                        ClearPendingLeaderboardSave();
+                    }
+                    else
+                    {
+                        SavePendingLeaderboardToPlayerPrefs();
+                    }
+
+                    Debug.Log(
+                        "[PlayFabManager] PlayFab posiada już " +
+                        "wynik równy lub lepszy od oczekującego."
                     );
 
                     return;
@@ -3945,19 +4971,65 @@ private void OnTalentProgressDataFailed(
                 UpdateLeaderboardScore(
                     highestWave,
                     damageScore,
-                    enemiesKilled
+                    enemiesKilled,
+                    success =>
+                    {
+                        leaderboardSaveInProgress = false;
+
+                        if (!success)
+                        {
+                            StartLeaderboardRetryCoroutine();
+                            return;
+                        }
+
+                        if (PendingLeaderboardMatches(
+                            highestWave,
+                            damageScore,
+                            enemiesKilled))
+                        {
+                            ClearPendingLeaderboardSave();
+                        }
+                        else
+                        {
+                            SavePendingLeaderboardToPlayerPrefs();
+                        }
+                    }
                 );
             }
         );
     }
 
 
+    private bool PendingLeaderboardMatches(
+        int highestWave,
+        long damageScore,
+        int enemiesKilled)
+    {
+        if (!pendingLeaderboardSave)
+            return false;
+
+        long pendingDamage =
+            (long)Math.Round(
+                pendingLeaderboardDamage,
+                MidpointRounding.AwayFromZero
+            );
+
+        return
+            pendingLeaderboardHighestWave ==
+                highestWave &&
+            pendingDamage ==
+                damageScore &&
+            pendingLeaderboardEnemiesKilled ==
+                enemiesKilled;
+    }
+
+
     private bool IsLeaderboardScoreBetter(
         int newWave,
-        long newDamage,
+        double newDamage,
         int newKills,
         int oldWave,
-        long oldDamage,
+        double oldDamage,
         int oldKills)
     {
         if (newWave > oldWave)
@@ -3986,26 +5058,20 @@ private void OnTalentProgressDataFailed(
     private void UpdateLeaderboardScore(
         int highestWave,
         long damageScore,
-        int enemiesKilled)
+        int enemiesKilled,
+        Action<bool> callback = null)
     {
         if (!IsLoggedIn)
+        {
+            callback?.Invoke(false);
             return;
+        }
 
         if (!IsEntityLoggedIn ||
-            !PlayFabSettings.staticPlayer
-                .IsEntityLoggedIn())
+            PlayFabSettings.staticPlayer == null ||
+            !PlayFabSettings.staticPlayer.IsEntityLoggedIn())
         {
-            pendingLeaderboardSave = true;
-
-            pendingLeaderboardHighestWave =
-                highestWave;
-
-            pendingLeaderboardDamage =
-                damageScore;
-
-            pendingLeaderboardEnemiesKilled =
-                enemiesKilled;
-
+            callback?.Invoke(false);
             return;
         }
 
@@ -4068,9 +5134,17 @@ private void OnTalentProgressDataFailed(
             {
                 Debug.Log(
                     "[PlayFabManager] Wynik leaderboardu zapisany. " +
-                    "Nazwa: " +
+                    "Wave: " +
+                    highestWave +
+                    ", Damage: " +
+                    damageScore +
+                    ", Kills: " +
+                    enemiesKilled +
+                    ", Nazwa: " +
                     leaderboardDisplayName
                 );
+
+                callback?.Invoke(true);
             },
             error =>
             {
@@ -4079,6 +5153,8 @@ private void OnTalentProgressDataFailed(
                     "leaderboardu: " +
                     GetPlayFabErrorText(error)
                 );
+
+                callback?.Invoke(false);
             }
         );
     }
@@ -4089,26 +5165,38 @@ private void OnTalentProgressDataFailed(
     // =========================================================
 
     private void PlayFabProgressionGetMyEntry(
-        Action<LeaderboardEntryData> callback)
+        Action<bool, LeaderboardEntryData> callback)
     {
         if (!IsLoggedIn)
         {
-            callback?.Invoke(null);
+            callback?.Invoke(
+                false,
+                null
+            );
+
             return;
         }
 
         if (!IsEntityLoggedIn ||
-            !PlayFabSettings.staticPlayer
-                .IsEntityLoggedIn())
+            PlayFabSettings.staticPlayer == null ||
+            !PlayFabSettings.staticPlayer.IsEntityLoggedIn())
         {
-            callback?.Invoke(null);
+            callback?.Invoke(
+                false,
+                null
+            );
+
             return;
         }
 
         if (string.IsNullOrEmpty(
             PlayFabId))
         {
-            callback?.Invoke(null);
+            callback?.Invoke(
+                false,
+                null
+            );
+
             return;
         }
 
@@ -4135,13 +5223,17 @@ private void OnTalentProgressDataFailed(
                     result.Rankings == null ||
                     result.Rankings.Count == 0)
                 {
-                    callback?.Invoke(null);
+                    callback?.Invoke(
+                        true,
+                        null
+                    );
+
                     return;
                 }
 
                 ProgressionModels.EntityLeaderboardEntry
                     source =
-                    result.Rankings[0];
+                        result.Rankings[0];
 
                 LeaderboardEntryData converted =
                     ConvertLeaderboardEntry(
@@ -4149,6 +5241,7 @@ private void OnTalentProgressDataFailed(
                     );
 
                 callback?.Invoke(
+                    true,
                     converted
                 );
             },
@@ -4160,7 +5253,10 @@ private void OnTalentProgressDataFailed(
                     GetPlayFabErrorText(error)
                 );
 
-                callback?.Invoke(null);
+                callback?.Invoke(
+                    false,
+                    null
+                );
             }
         );
     }
@@ -4190,8 +5286,8 @@ private void OnTalentProgressDataFailed(
         }
 
         if (!IsEntityLoggedIn ||
-            !PlayFabSettings.staticPlayer
-                .IsEntityLoggedIn())
+            PlayFabSettings.staticPlayer == null ||
+            !PlayFabSettings.staticPlayer.IsEntityLoggedIn())
         {
             callback?.Invoke(
                 new LeaderboardPageResult
@@ -4381,8 +5477,8 @@ private void OnTalentProgressDataFailed(
         }
 
         if (!IsEntityLoggedIn ||
-            !PlayFabSettings.staticPlayer
-                .IsEntityLoggedIn())
+            PlayFabSettings.staticPlayer == null ||
+            !PlayFabSettings.staticPlayer.IsEntityLoggedIn())
         {
             callback?.Invoke(
                 new MyLeaderboardResult
