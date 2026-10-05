@@ -1,7 +1,7 @@
 {
-    "version": "0.4.0",
-    "versionCode": 19,
+    "version": "0.4.1",
+    "versionCode": 20,
     "apkUrl": "https://github.com/matisos3/Chaos_Tower_Defense/releases/download/new/ChaosTowerDefense.apk",
-    "mandatory": false,
+    "mandatory": true,
     "message": "Dostępna jest nowa wersja gry."
 }
